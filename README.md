@@ -22,19 +22,20 @@ Bez nastavení Firebase se data ukládají jen do prohlížeče, kde appku otev�
 
 ## Nasazení na GitHub Pages
 
+Repozitář obsahuje workflow `.github/workflows/pages.yml`, který po každém pushi do `main` nasadí appku.
+
 1. V repozitáři otevři **Settings → Pages**.
-2. **Source**: *Deploy from a branch*, branch `main`, folder `/ (root)`. Ulož.
-3. Za minutu běží appka na `https://<uživatel>.github.io/acl-recovery/`.
+2. **Source**: vyber **GitHub Actions**. (Jednorázově.)
+3. Pushni do `main`, nebo spusť workflow ručně v **Actions → Nasazení na GitHub Pages → Run workflow**.
+4. Za minutu běží appka na `https://<uživatel>.github.io/acl-recovery/`. Adresu ukazuje i workflow v záložce Actions.
 
-## Sdílení dat mezi dvěma telefony (Firebase, ~5 minut, zdarma)
+## Sdílení dat mezi dvěma telefony (Firebase)
 
-1. Jdi na <https://console.firebase.google.com>, **Add project**, pojmenuj ho (např. `koleno-zpet`), Analytics můžeš vypnout.
-2. V levém menu **Build → Realtime Database → Create database**. Zvol region (např. `europe-west1`) a **Start in locked mode**.
-3. Záložka **Rules**: vlož obsah souboru `database.rules.json` z tohoto repozitáře a klikni **Publish**.
-   Pravidla pouští čtení i zápis jen pod `pairs/<kód dvojice>`; kdo kód nezná, k datům se nedostane. Pro soukromý deník to stačí.
-4. Vlevo nahoře **Project settings (ozubené kolo) → General → Your apps → ikona `</>` (Web)**. Pojmenuj appku, Hosting nezaškrtávej, **Register app**.
-5. Firebase ukáže objekt `firebaseConfig = { ... }`. Zkopíruj ho do `js/firebase-config.js` jako `window.FIREBASE_CONFIG = { ... };` (vzor je v souboru). Zkontroluj, že obsahuje `databaseURL`; když ne, přidej adresu databáze z kroku 2.
-6. Commitni a pushni. V appce se vpravo nahoře objeví **Sdíleno**.
+Bez nastavení Firebase se data ukládají jen do prohlížeče, kde appku otevřeš (parťák je neuvidí). Založení projektu zabere asi 5–10 minut a je zdarma.
+
+Podrobný návod krok za krokem včetně řešení potíží: **[docs/FIREBASE.md](docs/FIREBASE.md)**.
+
+Ve zkratce: založ projekt, zapni Realtime Database, vlož pravidla z `database.rules.json`, zaregistruj webovou appku a její `firebaseConfig` vlož buď do `js/firebase-config.js`, nebo do GitHub Secretu `FIREBASE_CONFIG` (workflow ho při nasazení doplní sám).
 
 ### Spárování telefonů
 
@@ -54,6 +55,8 @@ js/charts.js            SVG grafy (týdny, bolest, kruh cíle)
 js/app.js               obrazovky a logika
 js/firebase-config.js   konfigurace Firebase (volitelná)
 database.rules.json     pravidla Realtime Database
+docs/FIREBASE.md        návod na Firebase krok za krokem
+.github/workflows/      nasazení na GitHub Pages
 ```
 
 Data ve Firebase: `pairs/<kód>/{profile, sessions/<id>, messages/<id>, reactions/<sessionId>/<id>}`.
