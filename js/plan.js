@@ -2,9 +2,11 @@
 // týdny 5–8 přidávání zátěže. Stejná struktura se ukládá do databáze pod
 // pairs/<kód>/plan; appka pak použije verzi z databáze místo této vestavěné.
 window.PLAN = {
-  version: 2,
+  version: 3,
   name: "Návrat síly po ACL",
   weeklyGoal: 3,
+  // Žolík: jízda na kole do práce nahradí nejvýš jeden silový trénink týdně.
+  joker: { ex: "bike", perWeek: 1, minKm: 10, defaultKm: 20 },
   phases: [
     { id: 1, name: "Základy síly", range: "týdny 1–4", summary: "Probudit kvadriceps, získat jistotu v koleni a čistou techniku. Vlastní váha, guma, židle." },
     { id: 2, name: "Přidáváme zátěž", range: "týdny 5–8", summary: "Činka nebo lahev v rukou, schod, jednonožní mosty, rychlá chůze a první lehký běh." },
@@ -93,6 +95,14 @@ window.PLAN = {
       steps: ["Rovný terén, pohodlné boty.", "Tempo, při kterém se zadýcháš, ale mluvíš.", "Po chůzi zkontroluj koleno: žádný otok, žádná bolest."],
       gear: "Pohodlné sportovní boty, rovný terén.",
       avoid: ["Kulhání: jakmile se změní chůze, zpomal nebo skonči.", "Kopce a nerovný terén: zatím ne, koleno chce rovinu.", "Dlouhá chůze hned: délku přidávej po 5 minutách týdně."]
+    },
+    bike: {
+      name: "Kolo do práce", alias: "Žolík", type: "time",
+      why: "Kolo je pro koleno po plastice ideální: plynulý pohyb bez nárazů, výborné na rozsah a vytrvalost. Sílu ale nebuduje, proto nahradí nejvýš jeden silový trénink týdně.",
+      steps: ["Sedlo výš, než je zvykem: v dolní poloze pedálu má být koleno jen lehce pokrčené.", "Lehký převod, vyšší kadence (80–90 otáček). Žádné stoupání ve stoje.", "Cesta tam i zpět v klidu, nezávodit. Po příjezdu zkontroluj koleno."],
+      tip: "Oba směry za den počítej jako jednu jízdu (asi 20 km). Když koleno bolí nebo oteče, další den dej volno i od posilování.",
+      gear: "Kolo s dobře nastaveným sedlem, přilba.",
+      avoid: ["Nízké sedlo: koleno se ohýbá příliš, bolí pod čéškou.", "Těžký převod a šlapání ve stoje: velký tlak na čéšku.", "Kolo každý den místo posilování: žolík je jeden týdně, sílu dělá posilovna."]
     },
     run: {
       name: "Lehký běh na pásu", alias: "Chůze a běh střídavě", type: "time",
@@ -183,6 +193,7 @@ window.PLAN = {
   ],
   cheers: [
     "Jsi hvězda, jen tak dál! 💪",
+    "Kolo do práce se počítá. Šikula! 🚲",
     "Každý trénink se počítá. Hrdý na tebe.",
     "Dneska dobrý den na trénink? Fandím ti!",
     "Tři série a máš to. Zvládneš to.",
@@ -201,5 +212,6 @@ window.MILESTONES = [
   { id: "calm", name: "Klidné koleno", desc: "5 tréninků po sobě s bolestí do 2", test: s => s.calmRun >= 5 },
   { id: "phase2", name: "Základy hotové", desc: "4 splněné týdny, čas přidat zátěž", test: s => s.weeksHit >= 4 },
   { id: "twenty", name: "Dvacítka", desc: "20 tréninků", test: s => s.total >= 20 },
+  { id: "bike100", name: "Sto kilometrů", desc: "100 km na kole do práce", test: s => s.bikeKm >= 100 },
   { id: "plan", name: "Celý plán", desc: "8 splněných týdnů", test: s => s.weeksHit >= 8 }
 ];

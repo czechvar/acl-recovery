@@ -4,7 +4,8 @@ Malá webová aplikace pro dva: jeden rehabilituje koleno po plastice ACL a zapi
 
 - **Přehled** – splněné tréninky v týdnu, série týdnů, bolest po tréninku, fáze plánu, milníky.
 - **Trénink** – 8týdenní plán s progresí (týdny 1–4 základy, 5–8 zátěž a první běh), sestava pro aktuální týden s postupem u každého cviku, zápis sérií, bolest 0–10, otok, pocit, poznámka.
-- **Historie** – všechny tréninky, reakce parťáka (💪 ❤️ 🔥 👏).
+- **Žolík** – jízda na kole do práce (cca 20 km za den) nahradí nejvýš jeden silový trénink týdně. Další jízdy se zapíšou jako „navíc“ a do cíle se nepočítají.
+- **Historie** – všechny tréninky a jízdy, reakce parťáka (💪 ❤️ 🔥 👏).
 - **Fandění** – zprávy od parťáka, rychlé volby, odpovědi.
 - **Nastavení** – jména, datum operace, týdenní cíl, týden plánu (automaticky podle splněných týdnů, nebo ručně), nahrání plánu do databáze, role telefonu, odkaz pro parťáka.
 
