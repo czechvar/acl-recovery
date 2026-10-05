@@ -41,6 +41,8 @@
     draft: LS.get("draft", null),
     openEx: {},
     showAllWeeks: false,
+    showAllEx: false,
+    showSteps: LS.get("showSteps", true),
     lastSeenMsg: LS.get("lastSeenMsg", 0)
   };
 
@@ -248,7 +250,7 @@
     if (isPartner()) {
       return `<section class="section"><p class="eyebrow">Plán</p><h1>Co ${esc(her())} teď cvičí</h1>${renderWeekHeader(st)}</section>
       <section class="section"><div class="list">${st.week.items.map(it => renderExCard(it, null, true)).join("")}</div></section>
-      ${renderAllWeeks(st)}${renderRules()}`;
+      ${renderAllExercises()}${renderAllWeeks(st)}${renderRules()}`;
     }
     const d = draft();
     const doneCount = st.week.items.filter(it => (d.exercises[it.ex]?.sets || 0) > 0).length;
@@ -258,7 +260,7 @@
     <section class="section">
       <div><p class="eyebrow">Zápis tréninku</p><h1>${d.date === todayISO() ? "Dnešní sestava" : "Sestava " + esc(fmtLong(d.date))}</h1></div>
       ${renderWeekHeader(st)}
-      <p class="muted small">Klepni na čísla sérií, které máš hotové. Rozbal cvik pro postup.</p>
+      <div class="row" style="align-items:center"><p class="muted small">Klepni na čísla sérií, které máš hotové.</p><button class="linkbtn" id="toggle-steps" type="button" style="white-space:nowrap">${state.showSteps ? "Skrýt popisy" : "Zobrazit popisy"}</button></div>
       <div class="field"><label for="f-date">Datum tréninku</label><input type="date" id="f-date" value="${esc(d.date)}" max="${todayISO()}"></div>
     </section>
     <section class="section"><div class="list">${st.week.items.map(it => renderExCard(it, d.exercises[it.ex] || { sets: 0 }, false)).join("")}</div></section>
@@ -276,26 +278,41 @@
       <button class="btn btn-primary btn-block" id="save-session" type="button" ${doneCount ? "" : "disabled"}>${doneCount ? `Uložit trénink (${doneCount} ${plural(doneCount, "cvik", "cviky", "cviků")})` : "Označ aspoň jeden cvik"}</button>
       <button class="linkbtn" id="clear-draft" type="button">Vymazat rozpracovaný zápis</button>
     </section>
-    ${renderAllWeeks(st)}${renderRules()}`;
+    ${renderAllExercises()}${renderAllWeeks(st)}${renderRules()}`;
   }
 
   function renderExCard(it, val, readOnly) {
     const e = plan().exercises[it.ex] || { name: it.ex, alias: "", why: "", steps: [] };
     const sets = val ? val.sets || 0 : 0;
-    const open = state.openEx[it.ex] || readOnly;
+    const open = readOnly || (state.openEx[it.ex] !== undefined ? state.openEx[it.ex] : state.showSteps);
     const n = Math.max(1, Number(it.sets) || 3);
     return `<div class="card ex ${sets > 0 ? "done" : ""} ${open ? "open" : ""}" data-ex="${esc(it.ex)}">
       <div class="ex-head">
         <div><h3>${esc(e.name)}</h3><div class="ex-target">${esc(itemTarget(it))}${e.alias ? ` · ${esc(e.alias)}` : ""}</div>${it.note ? `<div class="ex-target">${esc(it.note)}</div>` : ""}</div>
-        ${readOnly ? "" : `<button class="linkbtn" data-toggle="${esc(it.ex)}" type="button">${open ? "Skrýt" : "Postup"}</button>`}
+        ${readOnly ? "" : `<button class="linkbtn" data-toggle="${esc(it.ex)}" type="button">${open ? "Skrýt popis" : "Popis"}</button>`}
       </div>
-      <div class="ex-body small">
-        ${e.why ? `<p class="muted">${esc(e.why)}</p>` : ""}
-        <ol>${(e.steps || []).map(s => `<li>${esc(s)}</li>`).join("")}</ol>
-        ${e.tip ? `<p><strong>Tip:</strong> ${esc(e.tip)}</p>` : ""}
-      </div>
+      <div class="ex-body small">${renderExBody(e)}</div>
       ${readOnly ? "" : `<div class="sets"><span class="lab">${n === 1 ? "Hotovo" : "Série"}</span>${Array.from({ length: n }, (_, i) => i + 1).map(k => `<button type="button" class="setbtn ${sets >= k ? "on" : ""}" data-set="${esc(it.ex)}" data-n="${k}" aria-pressed="${sets >= k}">${n === 1 ? "✓" : k}</button>`).join("")}</div>`}
     </div>`;
+  }
+
+  function renderExBody(e) {
+    return `${e.why ? `<p class="muted">${esc(e.why)}</p>` : ""}
+      ${e.gear ? `<p><strong>Potřebuješ:</strong> ${esc(e.gear)}</p>` : ""}
+      ${(e.steps || []).length ? `<p class="ex-lab">Provedení</p><ol>${e.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}
+      ${(e.avoid || []).length ? `<p class="ex-lab">Na co si dát pozor</p><ul>${e.avoid.map(s => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+      ${e.tip ? `<p><strong>Tip:</strong> ${esc(e.tip)}</p>` : ""}`;
+  }
+
+  function renderAllExercises() {
+    const P = plan();
+    const ids = Object.keys(P.exercises);
+    return `<section class="section">
+      <div class="section-head"><h2>Všechny cviky</h2><button class="linkbtn" id="toggle-ex" type="button">${state.showAllEx ? "Skrýt" : "Zobrazit všech " + ids.length}</button></div>
+      ${state.showAllEx ? `<div class="list">${ids.map(id => { const e = P.exercises[id]; const wk = P.weeks.filter(w => w.items.some(it => it.ex === id)).map(w => w.week); return `<div class="card ex open">
+        <div class="ex-head"><div><h3>${esc(e.name)}</h3><div class="ex-target">${esc(e.alias || "")}${wk.length ? ` · týdny ${wk[0]}–${wk[wk.length - 1]}` : ""}</div></div></div>
+        <div class="ex-body small">${renderExBody(e)}</div></div>`; }).join("")}</div>` : ""}
+    </section>`;
   }
 
   function renderRules() {
@@ -391,7 +408,9 @@
   function bind() {
     view.querySelectorAll("[data-role]").forEach(b => b.onclick = () => { state.role = b.dataset.role; LS.set("role", state.role); go("home"); });
     view.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
-    view.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => { state.openEx[b.dataset.toggle] = !state.openEx[b.dataset.toggle]; render(); });
+    view.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => { const id = b.dataset.toggle; const cur = state.openEx[id] !== undefined ? state.openEx[id] : state.showSteps; state.openEx[id] = !cur; render(); });
+    const ts = $("#toggle-steps"); if (ts) ts.onclick = () => { state.showSteps = !state.showSteps; state.openEx = {}; LS.set("showSteps", state.showSteps); render(); };
+    const te = $("#toggle-ex"); if (te) te.onclick = () => { state.showAllEx = !state.showAllEx; render(); };
     view.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
       const d = draft(), id = b.dataset.set, n = Number(b.dataset.n);
       d.exercises[id] = { sets: (d.exercises[id]?.sets === n) ? n - 1 : n };

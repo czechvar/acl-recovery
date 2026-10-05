@@ -2,7 +2,7 @@
 // týdny 5–8 přidávání zátěže. Stejná struktura se ukládá do databáze pod
 // pairs/<kód>/plan; appka pak použije verzi z databáze místo této vestavěné.
 window.PLAN = {
-  version: 1,
+  version: 2,
   name: "Návrat síly po ACL",
   weeklyGoal: 3,
   phases: [
@@ -20,65 +20,87 @@ window.PLAN = {
     slr: {
       name: "Zvedání natažené nohy", alias: "Straight Leg Raise", type: "reps",
       why: "Probuzení a posílení kvadricepsu, hlavně vnitřní hlavy (VMO), bez zátěže kloubu.",
-      steps: ["Sedni si na zem s nataženýma nohama.", "Zatni stehno operované nohy a zatlač podkolenní jamku do země.", "Zvedni nataženou nohu 10–20 cm nad zem, drž, pomalu polož."]
+      steps: ["Sedni si na zem s nataženýma nohama.", "Zatni stehno operované nohy a zatlač podkolenní jamku do země.", "Zvedni nataženou nohu 10–20 cm nad zem, drž, pomalu polož."],
+      gear: "Podložka na zem.",
+      avoid: ["Ohýbání kolene při zvedání: noha zůstává propnutá, stehno zatnuté.", "Švih: nahoru i dolů pomalu, 2 s tam, 2 s zpět.", "Prohýbání v bedrech: druhou nohu pokrč a opři chodidlem o zem."]
     },
     boxsquat: {
       name: "Dřepy na židli", alias: "Box Squat", type: "reps",
       why: "Bezpečný nácvik dřepu, židle jistí a hlídá hloubku.",
       steps: ["Stůj zády k židli, váha na celých chodidlech, rovná záda.", "Pomalu se posaď a hned zase vstaň.", "Zabírej oběma nohama rovnoměrně, postupně víc operovanou."],
-      tip: "Měkký míč nebo srolovaný ručník mezi koleny a lehký stisk aktivuje správné svaly."
+      tip: "Měkký míč nebo srolovaný ručník mezi koleny a lehký stisk aktivuje správné svaly.",
+      gear: "Židle nebo lavice, volitelně míč nebo ručník mezi kolena.",
+      avoid: ["Koleno uhýbá dovnitř: tlač kolena mírně ven, špičky lehce od sebe.", "Pata se zvedá: váha na celém chodidle, sedni si dozadu jako na židli.", "Dopad na židli: dosedni měkce, krátce se dotkni a vstaň."]
     },
     revlunge: {
       name: "Výpady vzad", alias: "Reverse Lunge", type: "reps",
       why: "Šetrnější než výpady vpřed: koleno nepřepadává přes špičku.",
       steps: ["Stůj rovně, udělej krok vzad.", "Pomalu klesni zadním kolenem k zemi, těžiště na přední noze.", "Odrazem přední nohy se vrať do stoje."],
-      tip: "Když je to zpočátku těžké, přidrž se stěny nebo opěradla."
+      tip: "Když je to zpočátku těžké, přidrž se stěny nebo opěradla.",
+      gear: "Rovná podlaha, zpočátku zeď nebo opěradlo na dosah.",
+      avoid: ["Krátký krok vzad: zadní koleno má klesat pod bok, ne za něj.", "Přední koleno před špičkou: hlídej, ať zůstává nad patou.", "Náklon trupu: hrudník vzpřímený, pohled dopředu."]
     },
     hamstring: {
       name: "Hamstringy s gumou", alias: "Zadní strana stehna", type: "reps",
       why: "Hamstringy jsou protisíla k přednímu vazu. Klíč ke stabilitě kolena.",
-      steps: ["Gumu připevni k něčemu pevnému nebo zahákni o druhou nohu.", "Vleže na břiše nebo ve stoje s oporou přitahuj patu k hýždi.", "Zpátky pomalu, s kontrolou."]
+      steps: ["Gumu připevni k něčemu pevnému nebo zahákni o druhou nohu.", "Vleže na břiše nebo ve stoje s oporou přitahuj patu k hýždi.", "Zpátky pomalu, s kontrolou."],
+      gear: "Odporová guma, bod uchycení (noha stolu, klika) nebo druhá noha.",
+      avoid: ["Pohyb z beder: pánev a trup se nehýbou, pracuje jen koleno.", "Švih gumou: brzdi i cestu zpět.", "Příliš silná guma: správně je 10–15 opakování s únavou na konci, ne boj o každé."]
     },
     calf: {
       name: "Výpony na jedné noze", alias: "Lýtko a kotník", type: "reps",
       why: "Lýtka a stabilita kotníku i kolena.",
       steps: ["Stoupni si na operovanou nohu, pro jistotu se drž zdi.", "Pomalu nahoru na špičku a pomalu dolů."],
-      tip: "Na schodu může pata klesnout pod úroveň špičky, pohyb je delší a účinnější."
+      tip: "Na schodu může pata klesnout pod úroveň špičky, pohyb je delší a účinnější.",
+      gear: "Zeď na přidržení, od 3. týdne schod.",
+      avoid: ["Kotník se bortí dovnitř: tlač váhu na palec, lýtko drží kotník rovně.", "Krátký rozsah: nahoru co nejvýš, dolů pomalu až do plného protažení.", "Pokrčené koleno: noha propnutá, pracuje jen kotník."]
     },
     balance: {
       name: "Stoj na jedné noze", alias: "Propriocepce", type: "time",
       why: "Učí koleno reagovat na nerovnosti, předchází dalšímu zranění.",
       steps: ["Stoupni si na operovanou nohu, koleno mírně pokrč, nikdy nezamykej.", "Vydrž bez zakolísání."],
-      tip: "Těžší varianta: zavřené oči nebo složený ručník pod nohou."
+      tip: "Těžší varianta: zavřené oči nebo složený ručník pod nohou.",
+      gear: "Zpočátku zeď na dosah, od 4. týdne složený ručník nebo polštář.",
+      avoid: ["Zamčené koleno: drž mírný podřep, koleno pruží.", "Koleno padá dovnitř: nastav ho nad druhý prst na noze.", "Zadržený dech: dýchej normálně, oči na jeden bod před sebou."]
     },
     bridge: {
       name: "Most na jedné noze", alias: "Single-leg Bridge", type: "reps",
       why: "Hýždě a hamstringy bez zátěže kolena. Připravuje na běh.",
       steps: ["Lehni si na záda, chodidla na zemi, pokrčená kolena.", "Zdravou nohu zvedni, operovanou zatlač do země a zvedni pánev.", "Nahoře zatni hýždě na 2 s, pomalu dolů."],
-      tip: "Když to na jedné noze nejde čistě, dělej most obounož a jen přidej výdrž."
+      tip: "Když to na jedné noze nejde čistě, dělej most obounož a jen přidej výdrž.",
+      gear: "Podložka na zem.",
+      avoid: ["Prohnutí v bedrech: pánev zvedej silou hýždí, ne zad.", "Bok padá na stranu zvednuté nohy: zvedej jen tak vysoko, aby boky zůstaly rovně.", "Pata moc daleko od hýždě: chodidlo asi na dlaň od zadku."]
     },
     stepup: {
       name: "Výstupy na schod", alias: "Step-up", type: "reps",
       why: "Funkční síla kvadricepsu a hýždí, přenos do chůze po schodech a běhu.",
       steps: ["Operovanou nohu polož na schod, koleno nad špičkou.", "Vystoupej silou přední nohy, zdravou nohou nepomáhej odrazem.", "Pomalu dolů, brzdi operovanou nohou."],
-      tip: "Začni na nízkém schodu. Když koleno uhýbá dovnitř, sniž výšku."
+      tip: "Začni na nízkém schodu. Když koleno uhýbá dovnitř, sniž výšku.",
+      gear: "Schod nebo stabilní stupínek, výška 15–25 cm.",
+      avoid: ["Odraz zdravou nohou: zadní noha je jen „mrtvá“, nahoru táhne ta na schodu.", "Koleno dovnitř: stejně jako u dřepu, tlač ho nad špičku.", "Seskok dolů: dolů pomalu, 2–3 s, brzdí operovaná noha."]
     },
     goblet: {
       name: "Dřep se zátěží v rukou", alias: "Goblet Squat", type: "reps",
       why: "Dřep ze židle se zátěží: činka, kettlebell nebo lahev s vodou u hrudníku.",
       steps: ["Zátěž drž oběma rukama u hrudníku, lokty dolů.", "Dřep k židli nebo do pohodlné hloubky, váha na celých chodidlech.", "Nahoru rovnoměrně oběma nohama."],
-      tip: "Začni se 3–5 kg. Technika stejná jako u dřepu na židli."
+      tip: "Začni se 3–5 kg. Technika stejná jako u dřepu na židli.",
+      gear: "Činka, kettlebell nebo lahev s vodou (začni 3–5 kg).",
+      avoid: ["Zátěž daleko od těla: drž ji u hrudníku, lokty dolů.", "Kulatá záda: hrudník nahoru, pohled dopředu.", "Hluboký dřep hned: hloubku přidávej postupně, bolest nad čéškou znamená méně do hloubky."]
     },
     walk: {
       name: "Rychlá chůze", alias: "Kondice", type: "time",
       why: "Vytrvalost a návyk na delší zátěž bez nárazů.",
-      steps: ["Rovný terén, pohodlné boty.", "Tempo, při kterém se zadýcháš, ale mluvíš.", "Po chůzi zkontroluj koleno: žádný otok, žádná bolest."]
+      steps: ["Rovný terén, pohodlné boty.", "Tempo, při kterém se zadýcháš, ale mluvíš.", "Po chůzi zkontroluj koleno: žádný otok, žádná bolest."],
+      gear: "Pohodlné sportovní boty, rovný terén.",
+      avoid: ["Kulhání: jakmile se změní chůze, zpomal nebo skonči.", "Kopce a nerovný terén: zatím ne, koleno chce rovinu.", "Dlouhá chůze hned: délku přidávej po 5 minutách týdně."]
     },
     run: {
       name: "Lehký běh na pásu", alias: "Chůze a běh střídavě", type: "time",
       why: "První návrat k běhu, rovně, bez změn směru, kontrolovaně.",
       steps: ["Rozehřej se 5 min chůzí.", "Střídej 1 min lehkého klusu a 2 min chůze.", "Skonči chůzí. Druhý den sleduj otok."],
-      tip: "Jen pokud předchozí týden proběhl bez otoku. Při pichnutí v koleni přejdi na chůzi."
+      tip: "Jen pokud předchozí týden proběhl bez otoku. Při pichnutí v koleni přejdi na chůzi.",
+      gear: "Běžecký pás nebo rovná měkká cesta, dobré běžecké boty.",
+      avoid: ["Příliš rychle: lehký klus, při kterém se dá mluvit.", "Ignorování otoku: když koleno druhý den oteče, vrať se o týden zpět na chůzi.", "Zatáčky a seskoky: zatím jen rovně."]
     }
   },
   weeks: [
