@@ -1,0 +1,409 @@
+/* Koleno zpět: aplikační logika. Vanilla JS, žádný build. */
+(function () {
+  "use strict";
+  const $ = sel => document.querySelector(sel);
+  const esc = s => String(s ?? "").replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+  const LS = {
+    get(k, d) { try { const v = localStorage.getItem("koleno-zpet:" + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("koleno-zpet:" + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+  };
+
+  /* ---------- datum ---------- */
+  const DAY = 86400000;
+  const pad = n => String(n).padStart(2, "0");
+  const toISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const fromISO = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const todayISO = () => toISO(new Date());
+  function startOfWeek(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); return x; }
+  const weekKey = iso => toISO(startOfWeek(fromISO(iso)));
+  const fmtShort = iso => { const d = fromISO(iso); return `${d.getDate()}.${d.getMonth() + 1}.`; };
+  const DAYS = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
+  function fmtLong(iso) { const d = fromISO(iso); const t = todayISO(); if (iso === t) return "dnes"; if (iso === toISO(new Date(Date.now() - DAY))) return "včera"; return `${DAYS[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`; }
+  const fmtTime = ts => { const d = new Date(ts); return `${d.getDate()}.${d.getMonth() + 1}. ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const daysBetween = (a, b) => Math.round((fromISO(b) - fromISO(a)) / DAY);
+
+  /* ---------- stav ---------- */
+  const params = new URLSearchParams(location.search);
+  let pair = params.get("pair") || LS.get("pair", null);
+  if (!pair) { pair = Math.random().toString(36).slice(2, 8).toUpperCase(); }
+  LS.set("pair", pair);
+  if (params.get("pair")) history.replaceState(null, "", location.pathname);
+
+  const store = window.createStore();
+  const BASE = `pairs/${pair}`;
+  const state = {
+    role: LS.get("role", null),            // "patient" | "partner"
+    tab: LS.get("tab", "home"),
+    data: { profile: null, sessions: null, messages: null, reactions: null },
+    connected: store.mode === "local",
+    draft: LS.get("draft", null),
+    openEx: {},
+    lastSeenMsg: LS.get("lastSeenMsg", 0)
+  };
+
+  const profile = () => Object.assign({ patientName: "", partnerName: "", surgeryDate: "", weeklyGoal: PLAN.weeklyGoalDefault }, state.data.profile || {});
+  const sessions = () => Object.entries(state.data.sessions || {}).map(([id, s]) => ({ id, ...s })).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0));
+  const messages = () => Object.entries(state.data.messages || {}).map(([id, m]) => ({ id, ...m })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const her = () => profile().patientName || "parťačka";
+  const him = () => profile().partnerName || "parťák";
+  const isPartner = () => state.role === "partner";
+
+  /* ---------- výpočty ---------- */
+  function stats() {
+    const ss = sessions();
+    const goal = Math.max(1, Number(profile().weeklyGoal) || PLAN.weeklyGoalDefault);
+    const today = todayISO();
+    const thisWeek = weekKey(today);
+    const byWeek = {};
+    ss.forEach(s => { byWeek[weekKey(s.date)] = (byWeek[weekKey(s.date)] || 0) + 1; });
+
+    const weeks = [];
+    for (let i = 7; i >= 0; i--) {
+      const d = startOfWeek(new Date()); d.setDate(d.getDate() - i * 7);
+      const k = toISO(d);
+      weeks.push({ key: k, label: fmtShort(k), count: byWeek[k] || 0, current: k === thisWeek });
+    }
+    // série týdnů se splněným cílem (aktuální týden se počítá, jen když už cíl má)
+    let streak = 0;
+    for (let i = 0; i < 60; i++) {
+      const d = startOfWeek(new Date()); d.setDate(d.getDate() - i * 7);
+      const c = byWeek[toISO(d)] || 0;
+      if (c >= goal) streak++;
+      else if (i === 0) continue;
+      else break;
+    }
+    let bestStreak = 0, run = 0;
+    Object.keys(byWeek).sort().forEach((k, idx, arr) => {
+      if (idx > 0 && daysBetween(arr[idx - 1], k) !== 7) run = 0;
+      run = byWeek[k] >= goal ? run + 1 : 0;
+      bestStreak = Math.max(bestStreak, run);
+    });
+    const weeksHit = Object.values(byWeek).filter(c => c >= goal).length;
+    let calmRun = 0;
+    for (const s of ss) { if (Number(s.pain) <= 2) calmRun++; else break; }
+
+    const last = ss[0] || null;
+    const sinceLast = last ? daysBetween(last.date, today) : null;
+    const surgery = profile().surgeryDate;
+    const weekPost = surgery ? Math.floor(daysBetween(surgery, today) / 7) + 1 : null;
+    const trainedToday = ss.some(s => s.date === today);
+    const phase = weeksHit >= 4 ? 2 : 1;
+
+    return { goal, thisWeekCount: byWeek[thisWeek] || 0, weeks, streak, bestStreak, weeksHit, calmRun, total: ss.length, last, sinceLast, weekPost, trainedToday, phase,
+      painPoints: ss.slice(0, 12).reverse().map(s => ({ pain: Number(s.pain) || 0, label: fmtShort(s.date) })) };
+  }
+
+  /* ---------- render ---------- */
+  const view = $("#view");
+  function render() {
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.tab === state.tab));
+    $("#role-pill").textContent = state.role ? (isPartner() ? `Fandím: ${him()}` : `Cvičím: ${her()}`) : "Kdo jsi?";
+    const sp = $("#sync-pill");
+    if (store.mode === "cloud") { sp.textContent = state.connected ? "Sdíleno" : "Offline"; sp.className = "pill " + (state.connected ? "pill-ok" : "pill-off"); }
+    else { sp.textContent = "Lokálně"; sp.title = "Data jen v tomto prohlížeči"; sp.className = "pill pill-muted"; }
+
+    const unseen = messages().filter(m => m.createdAt > state.lastSeenMsg && m.from !== state.role).length;
+    const badge = $("#cheer-badge"); badge.hidden = !unseen || state.tab === "cheer"; badge.textContent = unseen;
+
+    if (!state.role) { view.innerHTML = renderChooser(); bind(); return; }
+    const R = { home: renderHome, log: renderLog, history: renderHistory, cheer: renderCheer, settings: renderSettings };
+    view.innerHTML = (R[state.tab] || renderHome)();
+    bind();
+  }
+
+  function renderChooser() {
+    return `<section class="section">
+      <div><p class="eyebrow">Vítej</p><h1>Kdo tady jsi?</h1><p class="muted" style="margin-top:8px">Na každém telefonu se to nastaví jednou. V nastavení to jde kdykoli změnit.</p></div>
+      <div class="chooser">
+        <button class="opt" data-role="patient" type="button"><span class="t">Cvičím já</span><span class="muted small">Zapisuju tréninky, bolest a jak se cítím. Vidím svůj pokrok a povzbuzení.</span></button>
+        <button class="opt" data-role="partner" type="button"><span class="t">Fandím</span><span class="muted small">Sleduju pokrok, posílám povzbuzení a reaguju na tréninky.</span></button>
+      </div>
+    </section>`;
+  }
+
+  function renderHome() {
+    const st = stats(), p = profile();
+    let title, lede;
+    if (isPartner()) {
+      title = st.thisWeekCount >= st.goal ? `${her()} má tento týden splněno.` : st.trainedToday ? `${her()} dnes cvičila.` : `${her()} má tento týden ${st.thisWeekCount} z ${st.goal}.`;
+      lede = st.trainedToday ? "Napiš jí, že to viděl. Reakce na trénink najdeš v Historii." : st.sinceLast === null ? "Zatím žádný trénink. Pošli první povzbuzení." : st.sinceLast >= 3 ? `Poslední trénink před ${st.sinceLast} dny. Dobrý moment na popíchnutí.` : "Drží tempo. Krátká zpráva udělá radost.";
+    } else {
+      title = st.trainedToday ? "Dnes hotovo. Odpočívej." : st.thisWeekCount >= st.goal ? "Týden splněný. Víc není potřeba." : st.thisWeekCount === 0 ? "Nový týden, čistý štít." : `Ještě ${st.goal - st.thisWeekCount}× a týden je tvůj.`;
+      lede = st.trainedToday ? "Svaly rostou v klidu. Zítra se uvidíme." : "Tři série, čistá technika, žádná ostrá bolest. Deset minut stačí.";
+    }
+    const name = isPartner() ? "" : (p.patientName ? `Ahoj ${esc(p.patientName)}` : "Ahoj");
+    const phase = PLAN.phases[st.phase - 1];
+    const lastMsg = messages().filter(m => m.from === "partner").slice(-1)[0];
+
+    return `
+    <section class="section">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">${name || (st.weekPost ? `${st.weekPost}. týden po operaci` : "Rehabilitace")}</p>
+          <h1>${esc(title)}</h1>
+          <p class="lede muted">${esc(lede)}</p>
+        </div>
+        ${Charts.ring(st.thisWeekCount, st.goal)}
+      </div>
+      ${!isPartner() && !st.trainedToday ? `<button class="btn btn-primary btn-block" data-go="log" type="button">Zapsat dnešní trénink</button>` : ""}
+      ${isPartner() ? `<button class="btn btn-primary btn-block" data-go="cheer" type="button">Napsat povzbuzení</button>` : ""}
+    </section>
+
+    ${!isPartner() && lastMsg ? `<section class="section"><div class="msg partner" style="max-width:100%"><div>${esc(lastMsg.text)}</div><div class="meta">${esc(him())} · ${fmtTime(lastMsg.createdAt)}</div></div></section>` : ""}
+
+    <section class="section">
+      <div class="stats">
+        <div class="stat"><div class="v num">${st.total}</div><div class="l">tréninků celkem</div></div>
+        <div class="stat"><div class="v num">${st.streak}</div><div class="l">${st.streak === 1 ? "týden" : st.streak >= 2 && st.streak <= 4 ? "týdny" : "týdnů"} v řadě se splněným cílem</div></div>
+        <div class="stat"><div class="v num">${st.sinceLast === null ? "–" : st.sinceLast === 0 ? "dnes" : st.sinceLast}</div><div class="l">${st.sinceLast === null ? "žádný trénink" : st.sinceLast === 0 ? "poslední trénink" : (st.sinceLast === 1 ? "den od tréninku" : "dní od tréninku")}</div></div>
+        <div class="stat"><div class="v num">${st.weekPost ?? "–"}</div><div class="l">${st.weekPost ? "týden po operaci" : "datum operace v nastavení"}</div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="phase">
+        <p class="eyebrow">Fáze ${phase.id} · ${esc(phase.name)}</p>
+        <p class="small">${esc(phase.summary)}</p>
+        <div class="phase-steps">${PLAN.phases.map(ph => `<span class="${ph.id <= st.phase ? "on" : ""}"></span>`).join("")}</div>
+        <p class="small muted">${st.phase === 1 ? `Do další fáze: ${Math.max(0, 4 - st.weeksHit)} ${plural(Math.max(0, 4 - st.weeksHit), "splněný týden", "splněné týdny", "splněných týdnů")} bez bolesti a otoků.` : "Základy jsou za tebou. Přidej zátěž postupně, ideálně po konzultaci s fyzioterapeutem."}</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Tréninky za týden</h2><span class="small muted">posledních 8 týdnů</span></div>
+      ${Charts.weeklyBars(st.weeks, st.goal)}
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Bolest po tréninku</h2><span class="small muted">0 = nic, 10 = nesnesitelná</span></div>
+      ${st.painPoints.length ? Charts.painLine(st.painPoints) : `<div class="empty">Objeví se po prvním zapsaném tréninku.</div>`}
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Milníky</h2></div>
+      ${renderMilestones(st)}
+    </section>`;
+  }
+
+  function plural(n, one, few, many) { return n === 1 ? one : (n >= 2 && n <= 4) ? few : many; }
+
+  function renderMilestones(st) {
+    return `<div class="miles">${PLAN.milestones.map(m => `<div class="mile ${m.test(st) ? "hit" : ""}"><div class="n">${esc(m.name)}</div><div class="d">${esc(m.desc)}</div></div>`).join("")}</div>`;
+  }
+
+  /* ---------- zápis tréninku ---------- */
+  function newDraft() {
+    const ex = {}; PLAN.exercises.forEach(e => { ex[e.id] = { sets: 0 }; });
+    return { date: todayISO(), exercises: ex, pain: 0, swelling: 0, mood: null, note: "" };
+  }
+  function draft() { if (!state.draft) state.draft = newDraft(); if (!state.draft.exercises) state.draft.exercises = newDraft().exercises; return state.draft; }
+  function saveDraft() { LS.set("draft", state.draft); }
+
+  function renderLog() {
+    if (isPartner()) {
+      return `<section class="section"><p class="eyebrow">Plán</p><h1>Co ${esc(her())} cvičí</h1><p class="muted">Fáze 1: základní síla a stabilita. 2–3× týdně, 3 série po 10–15.</p></section>
+      <section class="section"><div class="list">${PLAN.exercises.map(e => renderExCard(e, null, true)).join("")}</div></section>
+      ${renderRules()}`;
+    }
+    const d = draft();
+    const doneCount = PLAN.exercises.filter(e => (d.exercises[e.id]?.sets || 0) > 0).length;
+    const moods = ["Skvěle", "Dobře", "Ok", "Těžké", "Bolelo"];
+    const swell = ["Žádný", "Mírný", "Výrazný"];
+    return `
+    <section class="section">
+      <div><p class="eyebrow">Zápis tréninku</p><h1>${d.date === todayISO() ? "Dnešní sestava" : "Sestava " + esc(fmtLong(d.date))}</h1></div>
+      <p class="muted small">Klepni na čísla sérií, které máš hotové. Rozbal cvik pro postup.</p>
+      <div class="field"><label for="f-date">Datum tréninku</label><input type="date" id="f-date" value="${esc(d.date)}" max="${todayISO()}"></div>
+    </section>
+    <section class="section"><div class="list">${PLAN.exercises.map(e => renderExCard(e, d.exercises[e.id] || { sets: 0 }, false)).join("")}</div></section>
+
+    <section class="section card" style="display:grid;gap:16px">
+      <div class="field">
+        <div class="lab">Bolest v koleni po tréninku: <span class="num" id="pain-val">${d.pain}</span>/10</div>
+        <input type="range" id="f-pain" min="0" max="10" step="1" value="${d.pain}">
+        <div class="range-labels"><span>nic</span><span>tah ve svalech</span><span>píchá</span></div>
+        ${d.pain >= 6 ? `<p class="pain-warn">Ostrá bolest nebo píchání pod čéškou znamená stop. Dej si den pauzu a sleduj otok.</p>` : ""}
+      </div>
+      <div class="field"><div class="lab">Otok</div><div class="seg" data-seg="swelling">${swell.map((s, i) => `<button type="button" data-v="${i}" class="${d.swelling === i ? "on" : ""}">${s}</button>`).join("")}</div></div>
+      <div class="field"><div class="lab">Jak to šlo</div><div class="seg" data-seg="mood">${moods.map((s, i) => `<button type="button" data-v="${i}" class="${d.mood === i ? "on" : ""}">${s}</button>`).join("")}</div></div>
+      <div class="field"><label for="f-note">Poznámka</label><textarea id="f-note" placeholder="Např. výpady bez opory, lýtka na schodu, koleno ráno klidné…">${esc(d.note)}</textarea></div>
+      <button class="btn btn-primary btn-block" id="save-session" type="button" ${doneCount ? "" : "disabled"}>${doneCount ? `Uložit trénink (${doneCount} ${plural(doneCount, "cvik", "cviky", "cviků")})` : "Označ aspoň jeden cvik"}</button>
+      <button class="linkbtn" id="clear-draft" type="button">Vymazat rozpracovaný zápis</button>
+    </section>
+    ${renderRules()}`;
+  }
+
+  function renderExCard(e, val, readOnly) {
+    const sets = val ? val.sets || 0 : 0;
+    const open = state.openEx[e.id] || readOnly;
+    return `<div class="card ex ${sets > 0 ? "done" : ""} ${open ? "open" : ""}" data-ex="${e.id}">
+      <div class="ex-head">
+        <div><h3>${esc(e.name)}</h3><div class="ex-target">${esc(e.alias)} · ${esc(e.target)}</div></div>
+        ${readOnly ? "" : `<button class="linkbtn" data-toggle="${e.id}" type="button">${open ? "Skrýt" : "Postup"}</button>`}
+      </div>
+      <div class="ex-body small">
+        <p class="muted">${esc(e.why)}</p>
+        <ol>${e.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+        ${e.tip ? `<p><strong>Tip:</strong> ${esc(e.tip)}</p>` : ""}
+      </div>
+      ${readOnly ? "" : `<div class="sets"><span class="lab">Série</span>${[1, 2, 3].map(n => `<button type="button" class="setbtn ${sets >= n ? "on" : ""}" data-set="${e.id}" data-n="${n}" aria-pressed="${sets >= n}">${n}</button>`).join("")}${e.type === "time" ? `<span class="small muted">30–60 s každá</span>` : ""}</div>`}
+    </div>`;
+  }
+
+  function renderRules() {
+    return `<section class="section"><h2>Pravidla bezpečného tréninku</h2><div class="list">${PLAN.rules.map(r => `<div class="card-soft card"><strong>${esc(r.title)}.</strong> <span class="muted">${esc(r.text)}</span></div>`).join("")}</div></section>`;
+  }
+
+  /* ---------- historie ---------- */
+  function renderHistory() {
+    const ss = sessions();
+    if (!ss.length) return `<section class="section"><h1>Historie</h1><div class="empty">Zatím žádný trénink. ${isPartner() ? "Až ho zapíše, uvidíš ho tady a můžeš zareagovat." : "První zápis je v záložce Trénink."}</div></section>`;
+    const reacts = state.data.reactions || {};
+    const moods = ["skvěle", "dobře", "ok", "těžké", "bolelo"], swell = ["bez otoku", "mírný otok", "výrazný otok"];
+    return `<section class="section"><div class="section-head"><h1>Historie</h1><span class="muted small num">${ss.length} ${plural(ss.length, "trénink", "tréninky", "tréninků")}</span></div>
+    <div class="list">${ss.map(s => {
+      const ex = PLAN.exercises.filter(e => (s.exercises?.[e.id]?.sets || 0) > 0);
+      const rs = Object.entries(reacts[s.id] || {}).map(([id, r]) => ({ id, ...r }));
+      const counts = {}; rs.forEach(r => { counts[r.emoji] = counts[r.emoji] || { n: 0, mine: false }; counts[r.emoji].n++; if (r.from === state.role) counts[r.emoji].mine = true; });
+      return `<article class="card sess" data-sid="${s.id}">
+        <div class="sess-head"><span class="d">${esc(fmtLong(s.date))}</span>
+          <span class="chips"><span class="chip pain-${Number(s.pain) || 0}">bolest ${Number(s.pain) || 0}</span><span class="chip">${swell[s.swelling] || swell[0]}</span>${s.mood !== null && s.mood !== undefined ? `<span class="chip">${moods[s.mood]}</span>` : ""}</span></div>
+        <div class="chips">${ex.map(e => `<span class="chip ok">${esc(e.name)} ${s.exercises[e.id].sets}×</span>`).join("") || `<span class="chip">bez cviků</span>`}</div>
+        ${s.note ? `<p class="small">${esc(s.note)}</p>` : ""}
+        <div class="reacts">
+          ${["💪", "❤️", "🔥", "👏"].map(em => `<button type="button" class="react ${counts[em]?.mine ? "mine" : ""}" data-react="${em}" data-sid="${s.id}">${em}${counts[em] ? `<span class="c num">${counts[em].n}</span>` : ""}</button>`).join("")}
+          ${!isPartner() ? `<button type="button" class="linkbtn" data-del="${s.id}" style="margin-left:auto">Smazat</button>` : ""}
+        </div>
+      </article>`;
+    }).join("")}</div></section>`;
+  }
+
+  /* ---------- fandění ---------- */
+  function renderCheer() {
+    const ms = messages();
+    const st = stats();
+    return `<section class="section">
+      <div><p class="eyebrow">Fandění · ${esc(isPartner() ? her() : him())}</p><h1>${isPartner() ? "Pošli povzbuzení" : "Vzkazy pro tebe"}</h1></div>
+      <div class="list" id="msg-list">${ms.length ? ms.map(m => `<div class="msg ${m.from}"><div>${esc(m.text)}</div><div class="meta">${esc(m.from === "partner" ? him() : her())} · ${fmtTime(m.createdAt)}</div></div>`).join("") : `<div class="empty">${isPartner() ? "Ještě nic. První zpráva je nejtěžší, zkus rychlou volbu níž." : "Zatím ticho. Pošli odkaz na appku parťákovi, ať může fandit."}</div>`}</div>
+    </section>
+    <section class="section card composer">
+      ${isPartner() ? `<div class="quick">${PLAN.cheers.map(c => `<button type="button" data-quick="${esc(c)}">${esc(c)}</button>`).join("")}${!st.trainedToday && st.thisWeekCount < st.goal ? `<button type="button" data-quick="Dneska by to šlo? Ještě ${st.goal - st.thisWeekCount} do splněného týdne. Věřím ti.">Popíchnout: ještě ${st.goal - st.thisWeekCount} do cíle</button>` : ""}</div>` : ""}
+      <div class="field"><label for="f-msg">${isPartner() ? "Vlastní zpráva" : "Odpověď"}</label><textarea id="f-msg" placeholder="${isPartner() ? "Co jí chceš říct…" : "Díky, dneska to šlo…"}"></textarea></div>
+      <button class="btn btn-primary" id="send-msg" type="button">Odeslat</button>
+    </section>
+    <section class="section"><h2>Milníky</h2>${renderMilestones(st)}</section>`;
+  }
+
+  /* ---------- nastavení ---------- */
+  function renderSettings() {
+    const p = profile();
+    const link = `${location.origin}${location.pathname}?pair=${pair}`;
+    return `<section class="section"><h1>Nastavení</h1></section>
+    <section class="section card" style="display:grid;gap:14px">
+      <h2>Vy dva</h2>
+      <div class="field"><label for="s-patient">Kdo cvičí (jméno)</label><input type="text" id="s-patient" value="${esc(p.patientName)}" placeholder="např. Káťa"></div>
+      <div class="field"><label for="s-partner">Kdo fandí (jméno)</label><input type="text" id="s-partner" value="${esc(p.partnerName)}" placeholder="např. Honza"></div>
+      <div class="field"><label for="s-surgery">Datum operace</label><input type="date" id="s-surgery" value="${esc(p.surgeryDate)}" max="${todayISO()}"></div>
+      <div class="field"><label for="s-goal">Cíl tréninků za týden</label><select id="s-goal">${[2, 3, 4].map(n => `<option value="${n}" ${Number(p.weeklyGoal) === n ? "selected" : ""}>${n}× týdně</option>`).join("")}</select></div>
+      <button class="btn btn-primary" id="save-profile" type="button">Uložit</button>
+    </section>
+    <section class="section card" style="display:grid;gap:12px">
+      <h2>Tento telefon</h2>
+      <div class="kv"><span>Role</span><div class="seg"><button type="button" data-setrole="patient" class="${state.role === "patient" ? "on" : ""}">Cvičím</button><button type="button" data-setrole="partner" class="${state.role === "partner" ? "on" : ""}">Fandím</button></div></div>
+      <div class="kv"><span>Kód dvojice</span><code class="inline">${esc(pair)}</code></div>
+      ${store.mode === "cloud"
+        ? `<p class="small muted">Pošli parťákovi tento odkaz. Otevře stejná data a zvolí si roli „Fandím“.</p>
+           <div class="row"><input type="text" id="s-link" readonly value="${esc(link)}"><button class="btn btn-ghost" id="copy-link" type="button">Kopírovat</button></div>`
+        : `<div class="note">Data se ukládají jen v tomto prohlížeči, parťák je neuvidí. Sdílení zapneš vyplněním <code class="inline">js/firebase-config.js</code> podle README (asi 5 minut).</div>`}
+    </section>
+    <section class="section card" style="display:grid;gap:12px">
+      <h2>Data</h2>
+      <div class="row"><button class="btn btn-ghost" id="export" type="button">Stáhnout zálohu (JSON)</button><button class="btn btn-danger" id="reset-local" type="button">Odhlásit tento telefon</button></div>
+      <p class="small muted">Odhlášení smaže jen volbu role a kód dvojice v tomto prohlížeči. Zapsané tréninky zůstanou${store.mode === "cloud" ? " ve sdílené databázi" : " v tomto prohlížeči"}.</p>
+    </section>`;
+  }
+
+  /* ---------- akce ---------- */
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2200); }
+  function go(tab) { state.tab = tab; LS.set("tab", tab); if (tab === "cheer") { const last = messages().slice(-1)[0]; state.lastSeenMsg = last ? last.createdAt : state.lastSeenMsg; LS.set("lastSeenMsg", state.lastSeenMsg); } window.scrollTo(0, 0); render(); }
+
+  function bind() {
+    view.querySelectorAll("[data-role]").forEach(b => b.onclick = () => { state.role = b.dataset.role; LS.set("role", state.role); go("home"); });
+    view.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+    view.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => { state.openEx[b.dataset.toggle] = !state.openEx[b.dataset.toggle]; render(); });
+    view.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
+      const d = draft(), id = b.dataset.set, n = Number(b.dataset.n);
+      d.exercises[id] = { sets: (d.exercises[id]?.sets === n) ? n - 1 : n };
+      saveDraft(); render();
+    });
+    const date = $("#f-date"); if (date) date.onchange = () => { draft().date = date.value || todayISO(); saveDraft(); render(); };
+    const pain = $("#f-pain"); if (pain) { pain.oninput = () => { $("#pain-val").textContent = pain.value; }; pain.onchange = () => { draft().pain = Number(pain.value); saveDraft(); render(); }; }
+    view.querySelectorAll("[data-seg] button").forEach(b => b.onclick = () => { const k = b.closest("[data-seg]").dataset.seg; const v = Number(b.dataset.v); draft()[k] = draft()[k] === v && k === "mood" ? null : v; saveDraft(); render(); });
+    const note = $("#f-note"); if (note) note.oninput = () => { draft().note = note.value; saveDraft(); };
+    const save = $("#save-session"); if (save) save.onclick = saveSession;
+    const clear = $("#clear-draft"); if (clear) clear.onclick = () => { state.draft = newDraft(); saveDraft(); render(); toast("Zápis vymazán"); };
+
+    view.querySelectorAll("[data-react]").forEach(b => b.onclick = () => toggleReaction(b.dataset.sid, b.dataset.react));
+    view.querySelectorAll("[data-del]").forEach(b => b.onclick = () => confirmDelete(b));
+
+    view.querySelectorAll("[data-quick]").forEach(b => b.onclick = () => { $("#f-msg").value = b.dataset.quick; $("#f-msg").focus(); });
+    const send = $("#send-msg"); if (send) send.onclick = sendMessage;
+
+    const sp = $("#save-profile"); if (sp) sp.onclick = saveProfile;
+    view.querySelectorAll("[data-setrole]").forEach(b => b.onclick = () => { state.role = b.dataset.setrole; LS.set("role", state.role); render(); toast(isPartner() ? "Teď fandíš" : "Teď cvičíš"); });
+    const cp = $("#copy-link"); if (cp) cp.onclick = () => { const i = $("#s-link"); navigator.clipboard?.writeText(i.value).then(() => toast("Odkaz zkopírován")).catch(() => { i.select(); toast("Označeno, zkopíruj ručně"); }); };
+    const ex = $("#export"); if (ex) ex.onclick = exportJSON;
+    const rs = $("#reset-local"); if (rs) rs.onclick = () => { if (rs.dataset.armed) { ["role", "pair", "draft", "tab", "lastSeenMsg"].forEach(k => localStorage.removeItem("koleno-zpet:" + k)); location.href = location.pathname; } else { rs.dataset.armed = "1"; rs.textContent = "Opravdu odhlásit?"; } };
+  }
+
+  async function saveSession() {
+    const d = draft();
+    const exercises = {}; Object.entries(d.exercises).forEach(([k, v]) => { if (v && v.sets > 0) exercises[k] = { sets: v.sets }; });
+    if (!Object.keys(exercises).length) return;
+    const sess = { date: d.date || todayISO(), exercises, pain: Number(d.pain) || 0, swelling: Number(d.swelling) || 0, mood: d.mood ?? null, note: (d.note || "").trim(), createdAt: Date.now() };
+    try {
+      await store.push(`${BASE}/sessions`, sess);
+      state.draft = newDraft(); saveDraft();
+      const st = stats();
+      toast(st.thisWeekCount >= st.goal ? "Uloženo. Týden splněný!" : `Uloženo. ${st.thisWeekCount} z ${st.goal} tento týden.`);
+      go("home");
+    } catch (e) { console.error(e); toast("Uložení se nepovedlo, zkus to znovu"); }
+  }
+
+  function confirmDelete(b) {
+    if (b.dataset.armed) { store.remove(`${BASE}/sessions/${b.dataset.del}`); store.remove(`${BASE}/reactions/${b.dataset.del}`); toast("Trénink smazán"); }
+    else { b.dataset.armed = "1"; b.textContent = "Opravdu smazat?"; }
+  }
+
+  async function toggleReaction(sid, emoji) {
+    const existing = Object.entries(state.data.reactions?.[sid] || {}).find(([, r]) => r.emoji === emoji && r.from === state.role);
+    if (existing) await store.remove(`${BASE}/reactions/${sid}/${existing[0]}`);
+    else await store.push(`${BASE}/reactions/${sid}`, { emoji, from: state.role, createdAt: Date.now() });
+  }
+
+  async function sendMessage() {
+    const ta = $("#f-msg"); const text = ta.value.trim(); if (!text) return;
+    await store.push(`${BASE}/messages`, { text, from: state.role, createdAt: Date.now() });
+    ta.value = ""; toast("Odesláno");
+    state.lastSeenMsg = Date.now(); LS.set("lastSeenMsg", state.lastSeenMsg);
+  }
+
+  async function saveProfile() {
+    await store.update(`${BASE}/profile`, {
+      patientName: $("#s-patient").value.trim(), partnerName: $("#s-partner").value.trim(),
+      surgeryDate: $("#s-surgery").value || "", weeklyGoal: Number($("#s-goal").value) || PLAN.weeklyGoalDefault
+    });
+    toast("Uloženo");
+  }
+
+  function exportJSON() {
+    const blob = new Blob([JSON.stringify({ pair, exportedAt: new Date().toISOString(), ...state.data }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `koleno-zpet-${todayISO()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  /* ---------- start ---------- */
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => go(t.dataset.tab));
+  store.subscribe(BASE, val => { state.data = Object.assign({ profile: null, sessions: null, messages: null, reactions: null }, val || {}); render(); });
+  store.onConnection(c => { state.connected = c; render(); });
+  render();
+})();
