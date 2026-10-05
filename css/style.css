@@ -241,3 +241,8 @@ code.inline { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; backg
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Týdny plánu */
+.phase-steps span.now { background: var(--accent); }
+.wk-now { border-color: var(--accent); }
+.phase h2 { margin-top: 2px; }
