@@ -25,7 +25,7 @@ Bez nastavení Firebase se data ukládají jen do prohlížeče, kde appku otev�
 Repozitář obsahuje workflow `.github/workflows/pages.yml`, který po každém pushi do `main` nasadí appku.
 
 1. V repozitáři otevři **Settings → Pages**.
-2. **Source**: vyber **GitHub Actions**. (Jednorázově.)
+2. **Source** by měl být **GitHub Actions**; workflow si to při prvním běhu nastaví sám. Když ne, přepni to ručně.
 3. Pushni do `main`, nebo spusť workflow ručně v **Actions → Nasazení na GitHub Pages → Run workflow**.
 4. Za minutu běží appka na `https://<uživatel>.github.io/acl-recovery/`. Adresu ukazuje i workflow v záložce Actions.
 
