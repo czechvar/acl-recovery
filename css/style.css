@@ -144,7 +144,8 @@ button { cursor: pointer; }
 .ex-target { font-size: .8rem; color: var(--fg-muted); }
 .ex-body { margin-top: 10px; display: none; gap: 8px; }
 .ex.open .ex-body { display: grid; }
-.ex ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.ex ol, .ex ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.ex-lab { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-muted); font-weight: 600; margin-top: 4px; }
 .sets { display: flex; gap: 6px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
 .sets .lab { font-size: .8rem; color: var(--fg-muted); margin-right: 4px; }
 .setbtn { width: 40px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 700; }
