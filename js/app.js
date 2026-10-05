@@ -21,6 +21,7 @@
   function fmtLong(iso) { const d = fromISO(iso); const t = todayISO(); if (iso === t) return "dnes"; if (iso === toISO(new Date(Date.now() - DAY))) return "včera"; return `${DAYS[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`; }
   const fmtTime = ts => { const d = new Date(ts); return `${d.getDate()}.${d.getMonth() + 1}. ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const daysBetween = (a, b) => Math.round((fromISO(b) - fromISO(a)) / DAY);
+  function plural(n, one, few, many) { return n === 1 ? one : (n >= 2 && n <= 4) ? few : many; }
 
   /* ---------- stav ---------- */
   const params = new URLSearchParams(location.search);
@@ -31,17 +32,37 @@
 
   const store = window.createStore();
   const BASE = `pairs/${pair}`;
+  const EMPTY = { profile: null, sessions: null, messages: null, reactions: null, plan: null };
   const state = {
     role: LS.get("role", null),            // "patient" | "partner"
     tab: LS.get("tab", "home"),
-    data: { profile: null, sessions: null, messages: null, reactions: null },
+    data: { ...EMPTY },
     connected: store.mode === "local",
     draft: LS.get("draft", null),
     openEx: {},
+    showAllWeeks: false,
     lastSeenMsg: LS.get("lastSeenMsg", 0)
   };
 
-  const profile = () => Object.assign({ patientName: "", partnerName: "", surgeryDate: "", weeklyGoal: PLAN.weeklyGoalDefault }, state.data.profile || {});
+  /* ---------- plán ---------- */
+  // Plán z databáze má přednost před vestavěným, pokud má týdny i cviky.
+  function plan() {
+    const db = state.data.plan;
+    const valid = db && typeof db === "object" && Array.isArray(db.weeks) && db.weeks.length && db.exercises && typeof db.exercises === "object";
+    return valid ? Object.assign({}, window.PLAN, db) : window.PLAN;
+  }
+  const planSource = () => plan() === window.PLAN ? "built-in" : "db";
+  const exName = id => plan().exercises[id]?.name || id;
+  function itemTarget(it) {
+    const main = it.time ? `${it.sets} × ${it.time}` : `${it.sets} × ${it.reps}`;
+    return main + (it.hold ? `, výdrž ${it.hold}` : "");
+  }
+  function planForDb() {
+    const p = window.PLAN;
+    return { version: p.version, name: p.name, weeklyGoal: p.weeklyGoal, phases: p.phases, rules: p.rules, exercises: p.exercises, weeks: p.weeks, cheers: p.cheers, uploadedAt: Date.now() };
+  }
+
+  const profile = () => Object.assign({ patientName: "", partnerName: "", surgeryDate: "", weeklyGoal: plan().weeklyGoal, planWeek: 0 }, state.data.profile || {});
   const sessions = () => Object.entries(state.data.sessions || {}).map(([id, s]) => ({ id, ...s })).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0));
   const messages = () => Object.entries(state.data.messages || {}).map(([id, m]) => ({ id, ...m })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const her = () => profile().patientName || "parťačka";
@@ -51,7 +72,8 @@
   /* ---------- výpočty ---------- */
   function stats() {
     const ss = sessions();
-    const goal = Math.max(1, Number(profile().weeklyGoal) || PLAN.weeklyGoalDefault);
+    const P = plan();
+    const goal = Math.max(1, Number(profile().weeklyGoal) || P.weeklyGoal);
     const today = todayISO();
     const thisWeek = weekKey(today);
     const byWeek = {};
@@ -63,7 +85,6 @@
       const k = toISO(d);
       weeks.push({ key: k, label: fmtShort(k), count: byWeek[k] || 0, current: k === thisWeek });
     }
-    // série týdnů se splněným cílem (aktuální týden se počítá, jen když už cíl má)
     let streak = 0;
     for (let i = 0; i < 60; i++) {
       const d = startOfWeek(new Date()); d.setDate(d.getDate() - i * 7);
@@ -78,7 +99,8 @@
       run = byWeek[k] >= goal ? run + 1 : 0;
       bestStreak = Math.max(bestStreak, run);
     });
-    const weeksHit = Object.values(byWeek).filter(c => c >= goal).length;
+    // Splněné týdny mimo aktuální: ten se dopočítá, až skončí.
+    const weeksHit = Object.entries(byWeek).filter(([k, c]) => c >= goal && k !== thisWeek).length;
     let calmRun = 0;
     for (const s of ss) { if (Number(s.pain) <= 2) calmRun++; else break; }
 
@@ -87,9 +109,14 @@
     const surgery = profile().surgeryDate;
     const weekPost = surgery ? Math.floor(daysBetween(surgery, today) / 7) + 1 : null;
     const trainedToday = ss.some(s => s.date === today);
-    const phase = weeksHit >= 4 ? 2 : 1;
 
-    return { goal, thisWeekCount: byWeek[thisWeek] || 0, weeks, streak, bestStreak, weeksHit, calmRun, total: ss.length, last, sinceLast, weekPost, trainedToday, phase,
+    const override = Number(profile().planWeek) || 0;
+    const planWeek = Math.min(P.weeks.length, Math.max(1, override || weeksHit + 1));
+    const week = P.weeks.find(w => w.week === planWeek) || P.weeks[P.weeks.length - 1];
+    const phase = P.phases.find(ph => ph.id === week.phase) || P.phases[0];
+
+    return { goal, thisWeekCount: byWeek[thisWeek] || 0, weeks, streak, bestStreak, weeksHit, calmRun, total: ss.length, last, sinceLast, weekPost, trainedToday,
+      planWeek, week, phase, planAuto: !override, planDone: weeksHit >= P.weeks.length,
       painPoints: ss.slice(0, 12).reverse().map(s => ({ pain: Number(s.pain) || 0, label: fmtShort(s.date) })) };
   }
 
@@ -122,18 +149,20 @@
   }
 
   function renderHome() {
-    const st = stats(), p = profile();
+    const st = stats(), p = profile(), P = plan();
     let title, lede;
     if (isPartner()) {
       title = st.thisWeekCount >= st.goal ? `${her()} má tento týden splněno.` : st.trainedToday ? `${her()} dnes cvičila.` : `${her()} má tento týden ${st.thisWeekCount} z ${st.goal}.`;
       lede = st.trainedToday ? "Napiš jí, že to viděl. Reakce na trénink najdeš v Historii." : st.sinceLast === null ? "Zatím žádný trénink. Pošli první povzbuzení." : st.sinceLast >= 3 ? `Poslední trénink před ${st.sinceLast} dny. Dobrý moment na popíchnutí.` : "Drží tempo. Krátká zpráva udělá radost.";
     } else {
       title = st.trainedToday ? "Dnes hotovo. Odpočívej." : st.thisWeekCount >= st.goal ? "Týden splněný. Víc není potřeba." : st.thisWeekCount === 0 ? "Nový týden, čistý štít." : `Ještě ${st.goal - st.thisWeekCount}× a týden je tvůj.`;
-      lede = st.trainedToday ? "Svaly rostou v klidu. Zítra se uvidíme." : "Tři série, čistá technika, žádná ostrá bolest. Deset minut stačí.";
+      lede = st.trainedToday ? "Svaly rostou v klidu. Zítra se uvidíme." : `${st.week.title}: ${st.week.focus}`;
     }
     const name = isPartner() ? "" : (p.patientName ? `Ahoj ${esc(p.patientName)}` : "Ahoj");
-    const phase = PLAN.phases[st.phase - 1];
     const lastMsg = messages().filter(m => m.from === "partner").slice(-1)[0];
+    const nextIdx = P.phases.findIndex(ph => ph.id === st.phase.id) + 1;
+    const phaseWeeks = P.weeks.filter(w => w.phase === st.phase.id);
+    const weeksLeftInPhase = phaseWeeks.filter(w => w.week > st.planWeek).length + (st.thisWeekCount >= st.goal ? 0 : 1);
 
     return `
     <section class="section">
@@ -154,7 +183,7 @@
     <section class="section">
       <div class="stats">
         <div class="stat"><div class="v num">${st.total}</div><div class="l">tréninků celkem</div></div>
-        <div class="stat"><div class="v num">${st.streak}</div><div class="l">${st.streak === 1 ? "týden" : st.streak >= 2 && st.streak <= 4 ? "týdny" : "týdnů"} v řadě se splněným cílem</div></div>
+        <div class="stat"><div class="v num">${st.streak}</div><div class="l">${plural(st.streak, "týden", "týdny", "týdnů")} v řadě se splněným cílem</div></div>
         <div class="stat"><div class="v num">${st.sinceLast === null ? "–" : st.sinceLast === 0 ? "dnes" : st.sinceLast}</div><div class="l">${st.sinceLast === null ? "žádný trénink" : st.sinceLast === 0 ? "poslední trénink" : (st.sinceLast === 1 ? "den od tréninku" : "dní od tréninku")}</div></div>
         <div class="stat"><div class="v num">${st.weekPost ?? "–"}</div><div class="l">${st.weekPost ? "týden po operaci" : "datum operace v nastavení"}</div></div>
       </div>
@@ -162,10 +191,10 @@
 
     <section class="section">
       <div class="phase">
-        <p class="eyebrow">Fáze ${phase.id} · ${esc(phase.name)}</p>
-        <p class="small">${esc(phase.summary)}</p>
-        <div class="phase-steps">${PLAN.phases.map(ph => `<span class="${ph.id <= st.phase ? "on" : ""}"></span>`).join("")}</div>
-        <p class="small muted">${st.phase === 1 ? `Do další fáze: ${Math.max(0, 4 - st.weeksHit)} ${plural(Math.max(0, 4 - st.weeksHit), "splněný týden", "splněné týdny", "splněných týdnů")} bez bolesti a otoků.` : "Základy jsou za tebou. Přidej zátěž postupně, ideálně po konzultaci s fyzioterapeutem."}</p>
+        <p class="eyebrow">Týden plánu ${st.planWeek} z ${P.weeks.length} · ${esc(st.week.title)}</p>
+        <p class="small"><strong>Fáze ${st.phase.id}, ${esc(st.phase.name)}.</strong> ${esc(st.phase.summary)}</p>
+        <div class="phase-steps">${P.weeks.map(w => `<span class="${w.week < st.planWeek ? "on" : w.week === st.planWeek ? "now" : ""}" title="Týden ${w.week}: ${esc(w.title)}"></span>`).join("")}</div>
+        <p class="small muted">${st.planDone ? "Celý plán je splněný. Další krok (skoky, změny směru) domluv s fyzioterapeutem." : nextIdx < P.phases.length ? `Do fáze ${P.phases[nextIdx].id} (${esc(P.phases[nextIdx].name)}): ${weeksLeftInPhase} ${plural(weeksLeftInPhase, "splněný týden", "splněné týdny", "splněných týdnů")} bez bolesti a otoků.` : ""}</p>
       </div>
     </section>
 
@@ -185,37 +214,54 @@
     </section>`;
   }
 
-  function plural(n, one, few, many) { return n === 1 ? one : (n >= 2 && n <= 4) ? few : many; }
-
   function renderMilestones(st) {
-    return `<div class="miles">${PLAN.milestones.map(m => `<div class="mile ${m.test(st) ? "hit" : ""}"><div class="n">${esc(m.name)}</div><div class="d">${esc(m.desc)}</div></div>`).join("")}</div>`;
+    return `<div class="miles">${window.MILESTONES.map(m => `<div class="mile ${m.test(st) ? "hit" : ""}"><div class="n">${esc(m.name)}</div><div class="d">${esc(m.desc)}</div></div>`).join("")}</div>`;
   }
 
   /* ---------- zápis tréninku ---------- */
-  function newDraft() {
-    const ex = {}; PLAN.exercises.forEach(e => { ex[e.id] = { sets: 0 }; });
-    return { date: todayISO(), exercises: ex, pain: 0, swelling: 0, mood: null, note: "" };
-  }
-  function draft() { if (!state.draft) state.draft = newDraft(); if (!state.draft.exercises) state.draft.exercises = newDraft().exercises; return state.draft; }
+  function newDraft() { return { date: todayISO(), exercises: {}, pain: 0, swelling: 0, mood: null, note: "" }; }
+  function draft() { if (!state.draft) state.draft = newDraft(); if (!state.draft.exercises) state.draft.exercises = {}; return state.draft; }
   function saveDraft() { LS.set("draft", state.draft); }
 
+  function renderWeekHeader(st) {
+    return `<div class="phase">
+      <p class="eyebrow">Týden plánu ${st.planWeek} z ${plan().weeks.length}${st.planAuto ? "" : " · nastaveno ručně"}</p>
+      <h2>${esc(st.week.title)}</h2>
+      <p class="small muted">${esc(st.week.focus)}</p>
+    </div>`;
+  }
+
+  function renderAllWeeks(st) {
+    const P = plan();
+    return `<section class="section">
+      <div class="section-head"><h2>Celý plán</h2><button class="linkbtn" id="toggle-weeks" type="button">${state.showAllWeeks ? "Skrýt" : "Zobrazit všech " + P.weeks.length + " týdnů"}</button></div>
+      ${state.showAllWeeks ? `<div class="list">${P.weeks.map(w => `<div class="card ${w.week === st.planWeek ? "wk-now" : ""}" style="padding:12px 14px">
+        <div class="row"><strong>Týden ${w.week} · ${esc(w.title)}</strong><span class="chip">fáze ${w.phase}</span></div>
+        <p class="small muted">${esc(w.focus)}</p>
+        <ul class="small" style="margin:6px 0 0;padding-left:18px">${w.items.map(it => `<li>${esc(exName(it.ex))}: ${esc(itemTarget(it))}${it.note ? ` <span class="muted">(${esc(it.note)})</span>` : ""}</li>`).join("")}</ul>
+      </div>`).join("")}</div>` : ""}
+    </section>`;
+  }
+
   function renderLog() {
+    const st = stats();
     if (isPartner()) {
-      return `<section class="section"><p class="eyebrow">Plán</p><h1>Co ${esc(her())} cvičí</h1><p class="muted">Fáze 1: základní síla a stabilita. 2–3× týdně, 3 série po 10–15.</p></section>
-      <section class="section"><div class="list">${PLAN.exercises.map(e => renderExCard(e, null, true)).join("")}</div></section>
-      ${renderRules()}`;
+      return `<section class="section"><p class="eyebrow">Plán</p><h1>Co ${esc(her())} teď cvičí</h1>${renderWeekHeader(st)}</section>
+      <section class="section"><div class="list">${st.week.items.map(it => renderExCard(it, null, true)).join("")}</div></section>
+      ${renderAllWeeks(st)}${renderRules()}`;
     }
     const d = draft();
-    const doneCount = PLAN.exercises.filter(e => (d.exercises[e.id]?.sets || 0) > 0).length;
+    const doneCount = st.week.items.filter(it => (d.exercises[it.ex]?.sets || 0) > 0).length;
     const moods = ["Skvěle", "Dobře", "Ok", "Těžké", "Bolelo"];
     const swell = ["Žádný", "Mírný", "Výrazný"];
     return `
     <section class="section">
       <div><p class="eyebrow">Zápis tréninku</p><h1>${d.date === todayISO() ? "Dnešní sestava" : "Sestava " + esc(fmtLong(d.date))}</h1></div>
+      ${renderWeekHeader(st)}
       <p class="muted small">Klepni na čísla sérií, které máš hotové. Rozbal cvik pro postup.</p>
       <div class="field"><label for="f-date">Datum tréninku</label><input type="date" id="f-date" value="${esc(d.date)}" max="${todayISO()}"></div>
     </section>
-    <section class="section"><div class="list">${PLAN.exercises.map(e => renderExCard(e, d.exercises[e.id] || { sets: 0 }, false)).join("")}</div></section>
+    <section class="section"><div class="list">${st.week.items.map(it => renderExCard(it, d.exercises[it.ex] || { sets: 0 }, false)).join("")}</div></section>
 
     <section class="section card" style="display:grid;gap:16px">
       <div class="field">
@@ -230,28 +276,30 @@
       <button class="btn btn-primary btn-block" id="save-session" type="button" ${doneCount ? "" : "disabled"}>${doneCount ? `Uložit trénink (${doneCount} ${plural(doneCount, "cvik", "cviky", "cviků")})` : "Označ aspoň jeden cvik"}</button>
       <button class="linkbtn" id="clear-draft" type="button">Vymazat rozpracovaný zápis</button>
     </section>
-    ${renderRules()}`;
+    ${renderAllWeeks(st)}${renderRules()}`;
   }
 
-  function renderExCard(e, val, readOnly) {
+  function renderExCard(it, val, readOnly) {
+    const e = plan().exercises[it.ex] || { name: it.ex, alias: "", why: "", steps: [] };
     const sets = val ? val.sets || 0 : 0;
-    const open = state.openEx[e.id] || readOnly;
-    return `<div class="card ex ${sets > 0 ? "done" : ""} ${open ? "open" : ""}" data-ex="${e.id}">
+    const open = state.openEx[it.ex] || readOnly;
+    const n = Math.max(1, Number(it.sets) || 3);
+    return `<div class="card ex ${sets > 0 ? "done" : ""} ${open ? "open" : ""}" data-ex="${esc(it.ex)}">
       <div class="ex-head">
-        <div><h3>${esc(e.name)}</h3><div class="ex-target">${esc(e.alias)} · ${esc(e.target)}</div></div>
-        ${readOnly ? "" : `<button class="linkbtn" data-toggle="${e.id}" type="button">${open ? "Skrýt" : "Postup"}</button>`}
+        <div><h3>${esc(e.name)}</h3><div class="ex-target">${esc(itemTarget(it))}${e.alias ? ` · ${esc(e.alias)}` : ""}</div>${it.note ? `<div class="ex-target">${esc(it.note)}</div>` : ""}</div>
+        ${readOnly ? "" : `<button class="linkbtn" data-toggle="${esc(it.ex)}" type="button">${open ? "Skrýt" : "Postup"}</button>`}
       </div>
       <div class="ex-body small">
-        <p class="muted">${esc(e.why)}</p>
-        <ol>${e.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+        ${e.why ? `<p class="muted">${esc(e.why)}</p>` : ""}
+        <ol>${(e.steps || []).map(s => `<li>${esc(s)}</li>`).join("")}</ol>
         ${e.tip ? `<p><strong>Tip:</strong> ${esc(e.tip)}</p>` : ""}
       </div>
-      ${readOnly ? "" : `<div class="sets"><span class="lab">Série</span>${[1, 2, 3].map(n => `<button type="button" class="setbtn ${sets >= n ? "on" : ""}" data-set="${e.id}" data-n="${n}" aria-pressed="${sets >= n}">${n}</button>`).join("")}${e.type === "time" ? `<span class="small muted">30–60 s každá</span>` : ""}</div>`}
+      ${readOnly ? "" : `<div class="sets"><span class="lab">${n === 1 ? "Hotovo" : "Série"}</span>${Array.from({ length: n }, (_, i) => i + 1).map(k => `<button type="button" class="setbtn ${sets >= k ? "on" : ""}" data-set="${esc(it.ex)}" data-n="${k}" aria-pressed="${sets >= k}">${n === 1 ? "✓" : k}</button>`).join("")}</div>`}
     </div>`;
   }
 
   function renderRules() {
-    return `<section class="section"><h2>Pravidla bezpečného tréninku</h2><div class="list">${PLAN.rules.map(r => `<div class="card-soft card"><strong>${esc(r.title)}.</strong> <span class="muted">${esc(r.text)}</span></div>`).join("")}</div></section>`;
+    return `<section class="section"><h2>Pravidla bezpečného tréninku</h2><div class="list">${plan().rules.map(r => `<div class="card-soft card"><strong>${esc(r.title)}.</strong> <span class="muted">${esc(r.text)}</span></div>`).join("")}</div></section>`;
   }
 
   /* ---------- historie ---------- */
@@ -262,13 +310,13 @@
     const moods = ["skvěle", "dobře", "ok", "těžké", "bolelo"], swell = ["bez otoku", "mírný otok", "výrazný otok"];
     return `<section class="section"><div class="section-head"><h1>Historie</h1><span class="muted small num">${ss.length} ${plural(ss.length, "trénink", "tréninky", "tréninků")}</span></div>
     <div class="list">${ss.map(s => {
-      const ex = PLAN.exercises.filter(e => (s.exercises?.[e.id]?.sets || 0) > 0);
+      const ex = Object.entries(s.exercises || {}).filter(([, v]) => (v?.sets || 0) > 0);
       const rs = Object.entries(reacts[s.id] || {}).map(([id, r]) => ({ id, ...r }));
       const counts = {}; rs.forEach(r => { counts[r.emoji] = counts[r.emoji] || { n: 0, mine: false }; counts[r.emoji].n++; if (r.from === state.role) counts[r.emoji].mine = true; });
       return `<article class="card sess" data-sid="${s.id}">
-        <div class="sess-head"><span class="d">${esc(fmtLong(s.date))}</span>
+        <div class="sess-head"><span class="d">${esc(fmtLong(s.date))}${s.planWeek ? ` <span class="muted small">· ${s.planWeek}. týden plánu</span>` : ""}</span>
           <span class="chips"><span class="chip pain-${Number(s.pain) || 0}">bolest ${Number(s.pain) || 0}</span><span class="chip">${swell[s.swelling] || swell[0]}</span>${s.mood !== null && s.mood !== undefined ? `<span class="chip">${moods[s.mood]}</span>` : ""}</span></div>
-        <div class="chips">${ex.map(e => `<span class="chip ok">${esc(e.name)} ${s.exercises[e.id].sets}×</span>`).join("") || `<span class="chip">bez cviků</span>`}</div>
+        <div class="chips">${ex.map(([id, v]) => `<span class="chip ok">${esc(exName(id))} ${v.sets}×</span>`).join("") || `<span class="chip">bez cviků</span>`}</div>
         ${s.note ? `<p class="small">${esc(s.note)}</p>` : ""}
         <div class="reacts">
           ${["💪", "❤️", "🔥", "👏"].map(em => `<button type="button" class="react ${counts[em]?.mine ? "mine" : ""}" data-react="${em}" data-sid="${s.id}">${em}${counts[em] ? `<span class="c num">${counts[em].n}</span>` : ""}</button>`).join("")}
@@ -287,7 +335,7 @@
       <div class="list" id="msg-list">${ms.length ? ms.map(m => `<div class="msg ${m.from}"><div>${esc(m.text)}</div><div class="meta">${esc(m.from === "partner" ? him() : her())} · ${fmtTime(m.createdAt)}</div></div>`).join("") : `<div class="empty">${isPartner() ? "Ještě nic. První zpráva je nejtěžší, zkus rychlou volbu níž." : "Zatím ticho. Pošli odkaz na appku parťákovi, ať může fandit."}</div>`}</div>
     </section>
     <section class="section card composer">
-      ${isPartner() ? `<div class="quick">${PLAN.cheers.map(c => `<button type="button" data-quick="${esc(c)}">${esc(c)}</button>`).join("")}${!st.trainedToday && st.thisWeekCount < st.goal ? `<button type="button" data-quick="Dneska by to šlo? Ještě ${st.goal - st.thisWeekCount} do splněného týdne. Věřím ti.">Popíchnout: ještě ${st.goal - st.thisWeekCount} do cíle</button>` : ""}</div>` : ""}
+      ${isPartner() ? `<div class="quick">${plan().cheers.map(c => `<button type="button" data-quick="${esc(c)}">${esc(c)}</button>`).join("")}${!st.trainedToday && st.thisWeekCount < st.goal ? `<button type="button" data-quick="Dneska by to šlo? Ještě ${st.goal - st.thisWeekCount} do splněného týdne. Věřím ti.">Popíchnout: ještě ${st.goal - st.thisWeekCount} do cíle</button>` : ""}</div>` : ""}
       <div class="field"><label for="f-msg">${isPartner() ? "Vlastní zpráva" : "Odpověď"}</label><textarea id="f-msg" placeholder="${isPartner() ? "Co jí chceš říct…" : "Díky, dneska to šlo…"}"></textarea></div>
       <button class="btn btn-primary" id="send-msg" type="button">Odeslat</button>
     </section>
@@ -296,8 +344,10 @@
 
   /* ---------- nastavení ---------- */
   function renderSettings() {
-    const p = profile();
+    const p = profile(), P = plan(), st = stats();
     const link = `${location.origin}${location.pathname}?pair=${pair}`;
+    const dbPlan = state.data.plan;
+    const dbVer = dbPlan && dbPlan.version;
     return `<section class="section"><h1>Nastavení</h1></section>
     <section class="section card" style="display:grid;gap:14px">
       <h2>Vy dva</h2>
@@ -305,7 +355,18 @@
       <div class="field"><label for="s-partner">Kdo fandí (jméno)</label><input type="text" id="s-partner" value="${esc(p.partnerName)}" placeholder="např. Honza"></div>
       <div class="field"><label for="s-surgery">Datum operace</label><input type="date" id="s-surgery" value="${esc(p.surgeryDate)}" max="${todayISO()}"></div>
       <div class="field"><label for="s-goal">Cíl tréninků za týden</label><select id="s-goal">${[2, 3, 4].map(n => `<option value="${n}" ${Number(p.weeklyGoal) === n ? "selected" : ""}>${n}× týdně</option>`).join("")}</select></div>
+      <div class="field"><label for="s-week">Týden plánu</label><select id="s-week"><option value="0" ${!Number(p.planWeek) ? "selected" : ""}>Automaticky (teď ${st.weeksHit + 1 > P.weeks.length ? P.weeks.length : st.weeksHit + 1}. podle splněných týdnů)</option>${P.weeks.map(w => `<option value="${w.week}" ${Number(p.planWeek) === w.week ? "selected" : ""}>Týden ${w.week} · ${esc(w.title)}</option>`).join("")}</select>
+        <p class="small muted">Ručně nastav, když chceš týden zopakovat (bolest, otok, pauza) nebo přeskočit.</p></div>
       <button class="btn btn-primary" id="save-profile" type="button">Uložit</button>
+    </section>
+    <section class="section card" style="display:grid;gap:12px">
+      <h2>Tréninkový plán</h2>
+      <div class="kv"><span>Používá se</span><span class="small">${planSource() === "db" ? `z databáze, verze ${esc(dbVer ?? "?")}` : `vestavěný, verze ${esc(window.PLAN.version)}`}</span></div>
+      <div class="kv"><span>Rozsah</span><span class="small">${P.weeks.length} ${plural(P.weeks.length, "týden", "týdny", "týdnů")}, ${Object.keys(P.exercises).length} cviků</span></div>
+      ${store.mode === "cloud"
+        ? `<p class="small muted">${planSource() === "db" && dbVer >= window.PLAN.version ? "Databáze má aktuální plán." : planSource() === "db" ? `V appce je novější plán (verze ${window.PLAN.version}). Nahraj ho, aby ho viděli oba.` : "Plán zatím není v databázi. Nahraj ho, ať ho jde později upravovat bez změny kódu."}</p>
+           <button class="btn btn-ghost" id="upload-plan" type="button">Nahrát plán do databáze (verze ${window.PLAN.version})</button>`
+        : `<p class="small muted">Po zapnutí Firebase půjde plán nahrát do databáze jedním klepnutím tady.</p>`}
     </section>
     <section class="section card" style="display:grid;gap:12px">
       <h2>Tento telefon</h2>
@@ -336,6 +397,7 @@
       d.exercises[id] = { sets: (d.exercises[id]?.sets === n) ? n - 1 : n };
       saveDraft(); render();
     });
+    const tw = $("#toggle-weeks"); if (tw) tw.onclick = () => { state.showAllWeeks = !state.showAllWeeks; render(); };
     const date = $("#f-date"); if (date) date.onchange = () => { draft().date = date.value || todayISO(); saveDraft(); render(); };
     const pain = $("#f-pain"); if (pain) { pain.oninput = () => { $("#pain-val").textContent = pain.value; }; pain.onchange = () => { draft().pain = Number(pain.value); saveDraft(); render(); }; }
     view.querySelectorAll("[data-seg] button").forEach(b => b.onclick = () => { const k = b.closest("[data-seg]").dataset.seg; const v = Number(b.dataset.v); draft()[k] = draft()[k] === v && k === "mood" ? null : v; saveDraft(); render(); });
@@ -350,6 +412,7 @@
     const send = $("#send-msg"); if (send) send.onclick = sendMessage;
 
     const sp = $("#save-profile"); if (sp) sp.onclick = saveProfile;
+    const up = $("#upload-plan"); if (up) up.onclick = uploadPlan;
     view.querySelectorAll("[data-setrole]").forEach(b => b.onclick = () => { state.role = b.dataset.setrole; LS.set("role", state.role); render(); toast(isPartner() ? "Teď fandíš" : "Teď cvičíš"); });
     const cp = $("#copy-link"); if (cp) cp.onclick = () => { const i = $("#s-link"); navigator.clipboard?.writeText(i.value).then(() => toast("Odkaz zkopírován")).catch(() => { i.select(); toast("Označeno, zkopíruj ručně"); }); };
     const ex = $("#export"); if (ex) ex.onclick = exportJSON;
@@ -357,15 +420,15 @@
   }
 
   async function saveSession() {
-    const d = draft();
+    const d = draft(), st = stats();
     const exercises = {}; Object.entries(d.exercises).forEach(([k, v]) => { if (v && v.sets > 0) exercises[k] = { sets: v.sets }; });
     if (!Object.keys(exercises).length) return;
-    const sess = { date: d.date || todayISO(), exercises, pain: Number(d.pain) || 0, swelling: Number(d.swelling) || 0, mood: d.mood ?? null, note: (d.note || "").trim(), createdAt: Date.now() };
+    const sess = { date: d.date || todayISO(), planWeek: st.planWeek, exercises, pain: Number(d.pain) || 0, swelling: Number(d.swelling) || 0, mood: d.mood ?? null, note: (d.note || "").trim(), createdAt: Date.now() };
     try {
       await store.push(`${BASE}/sessions`, sess);
       state.draft = newDraft(); saveDraft();
-      const st = stats();
-      toast(st.thisWeekCount >= st.goal ? "Uloženo. Týden splněný!" : `Uloženo. ${st.thisWeekCount} z ${st.goal} tento týden.`);
+      const after = stats();
+      toast(after.thisWeekCount >= after.goal ? "Uloženo. Týden splněný!" : `Uloženo. ${after.thisWeekCount} z ${after.goal} tento týden.`);
       go("home");
     } catch (e) { console.error(e); toast("Uložení se nepovedlo, zkus to znovu"); }
   }
@@ -391,9 +454,15 @@
   async function saveProfile() {
     await store.update(`${BASE}/profile`, {
       patientName: $("#s-patient").value.trim(), partnerName: $("#s-partner").value.trim(),
-      surgeryDate: $("#s-surgery").value || "", weeklyGoal: Number($("#s-goal").value) || PLAN.weeklyGoalDefault
+      surgeryDate: $("#s-surgery").value || "", weeklyGoal: Number($("#s-goal").value) || plan().weeklyGoal,
+      planWeek: Number($("#s-week").value) || 0
     });
     toast("Uloženo");
+  }
+
+  async function uploadPlan() {
+    try { await store.set(`${BASE}/plan`, planForDb()); toast(`Plán verze ${window.PLAN.version} nahrán`); }
+    catch (e) { console.error(e); toast("Nahrání se nepovedlo"); }
   }
 
   function exportJSON() {
@@ -403,7 +472,7 @@
 
   /* ---------- start ---------- */
   document.querySelectorAll(".tab").forEach(t => t.onclick = () => go(t.dataset.tab));
-  store.subscribe(BASE, val => { state.data = Object.assign({ profile: null, sessions: null, messages: null, reactions: null }, val || {}); render(); });
+  store.subscribe(BASE, val => { state.data = Object.assign({ ...EMPTY }, val || {}); render(); });
   store.onConnection(c => { state.connected = c; render(); });
   render();
 })();

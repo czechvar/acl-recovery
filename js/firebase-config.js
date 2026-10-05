@@ -1,17 +1,13 @@
 // Konfigurace Firebase pro sdílení dat mezi dvěma telefony.
-// Návod krok za krokem je v README.md. Dokud je zde `null`, běží aplikace
-// v lokálním režimu (data zůstávají jen v tomto prohlížeči).
-//
-// Po vytvoření projektu ve Firebase sem vložte objekt, který vám konzole vygeneruje:
-//
-// window.FIREBASE_CONFIG = {
-//   apiKey: "AIza...",
-//   authDomain: "koleno-zpet.firebaseapp.com",
-//   databaseURL: "https://koleno-zpet-default-rtdb.europe-west1.firebasedatabase.app",
-//   projectId: "koleno-zpet",
-//   storageBucket: "koleno-zpet.appspot.com",
-//   messagingSenderId: "123456789",
-//   appId: "1:123456789:web:abcdef"
-// };
+// Hodnoty nejsou tajné: přístup k datům řídí pravidla v database.rules.json.
+// Návod je v docs/FIREBASE.md. Pro lokální režim nastav `null`.
 
-window.FIREBASE_CONFIG = null;
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDloBlwPlMuLObyOyDuk7kswGlufOllAQM",
+  authDomain: "koleno-zpet.firebaseapp.com",
+  databaseURL: "https://koleno-zpet-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "koleno-zpet",
+  storageBucket: "koleno-zpet.firebasestorage.app",
+  messagingSenderId: "405129774690",
+  appId: "1:405129774690:web:c199b8b4c47e6d2969333b"
+};

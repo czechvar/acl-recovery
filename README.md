@@ -3,10 +3,10 @@
 Malá webová aplikace pro dva: jeden rehabilituje koleno po plastice ACL a zapisuje tréninky, druhý sleduje pokrok a fandí.
 
 - **Přehled** – splněné tréninky v týdnu, série týdnů, bolest po tréninku, fáze plánu, milníky.
-- **Trénink** – šest cviků fáze 1 s postupem, zápis sérií, bolest 0–10, otok, pocit, poznámka.
+- **Trénink** – 8týdenní plán s progresí (týdny 1–4 základy, 5–8 zátěž a první běh), sestava pro aktuální týden s postupem u každého cviku, zápis sérií, bolest 0–10, otok, pocit, poznámka.
 - **Historie** – všechny tréninky, reakce parťáka (💪 ❤️ 🔥 👏).
 - **Fandění** – zprávy od parťáka, rychlé volby, odpovědi.
-- **Nastavení** – jména, datum operace, týdenní cíl, role telefonu, odkaz pro parťáka.
+- **Nastavení** – jména, datum operace, týdenní cíl, týden plánu (automaticky podle splněných týdnů, nebo ručně), nahrání plánu do databáze, role telefonu, odkaz pro parťáka.
 
 Čistý HTML/CSS/JS, žádný build. Funguje na telefonu i na počítači, ve světlém i tmavém režimu.
 
@@ -49,7 +49,8 @@ Odkaz obsahuje `?pair=KÓD`. Kód se na každém telefonu uloží, takže dál s
 ```
 index.html              stránka a navigace
 css/style.css           vzhled (světlý i tmavý režim)
-js/plan.js              cviky, fáze, pravidla, milníky, rychlé zprávy
+js/plan.js              plán: cviky, týdny s progresí, fáze, pravidla, rychlé zprávy, milníky
+scripts/upload-plan.mjs nahrání plánu do Firebase z počítače
 js/store.js             úložiště: Firebase nebo localStorage, stejné rozhraní
 js/charts.js            SVG grafy (týdny, bolest, kruh cíle)
 js/app.js               obrazovky a logika
@@ -59,8 +60,10 @@ docs/FIREBASE.md        návod na Firebase krok za krokem
 .github/workflows/      nasazení na GitHub Pages
 ```
 
-Data ve Firebase: `pairs/<kód>/{profile, sessions/<id>, messages/<id>, reactions/<sessionId>/<id>}`.
+Data ve Firebase: `pairs/<kód>/{profile, plan, sessions/<id>, messages/<id>, reactions/<sessionId>/<id>}`.
 
-## Úprava plánu
+## Tréninkový plán
 
-Cviky, cíle a fáze jsou v `js/plan.js`. Přidání cviku = nový objekt v poli `exercises`. Změna týdenního cíle jde i přímo v appce v Nastavení.
+Plán je v `js/plan.js`: slovník cviků `exercises` (název, proč, postup, tip) a pole `weeks`, kde každý týden má název, zaměření a položky `{ ex, sets, reps | time, hold, note }`. Týden plánu se určí automaticky podle počtu splněných týdnů, v Nastavení jde přepnout ručně (opakování týdne po bolesti nebo pauze).
+
+Po zapnutí Firebase jde plán nahrát do databáze (Nastavení → Nahrát plán, nebo `node scripts/upload-plan.mjs --pair KÓD`). Appka pak používá verzi z databáze, takže ho jde upravovat přímo v konzoli Firebase. Při změně v kódu zvyš `version` a nahraj znovu.

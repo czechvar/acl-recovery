@@ -14,7 +14,7 @@ Celý postup zabere asi 5–10 minut. Potřebuješ Google účet.
 
 ## 2. Zapni Realtime Database
 
-1. V levém menu rozbal **Build** a klikni na **Realtime Database**.
+1. V levém menu rozbal **Databases and storage** a klikni na **Realtime Database**. (Ve starší verzi konzole je to pod **Build**. Případně napiš „Realtime Database“ do **Search for products** nahoře.)
 2. **Create Database**.
 3. **Database location**: vyber `Belgium (europe-west1)` nebo jiný region v Evropě. Pokračuj **Next**.
 4. **Security rules**: vyber **Start in locked mode**. Pravidla nastavíme v dalším kroku. **Enable**.
@@ -31,8 +31,8 @@ Co pravidla dělají: číst a zapisovat lze jen pod cestou `pairs/<kód dvojice
 
 ## 4. Zaregistruj webovou aplikaci a získej konfiguraci
 
-1. Vlevo nahoře klikni na ozubené kolo vedle **Project Overview** a zvol **Project settings**.
-2. Na záložce **General** sjeď dolů k **Your apps** a klikni na ikonu **`</>`** (Web).
+1. Na **Project Overview** klikni na **+ Add app** a zvol **Web** (ikona `</>`). (Nebo **Settings → Project settings → General → Your apps**.)
+2. Pokud se ptá na platformu, vyber **Web**.
 3. **App nickname**: `koleno-zpet-web`. **Firebase Hosting** nezaškrtávej (hostujeme na GitHub Pages).
 4. **Register app**.
 5. Firebase ukáže kód s objektem `firebaseConfig`. Vypadá takto:
@@ -101,13 +101,32 @@ Commitni a pushni do `main`. GitHub Pages se znovu nasadí samy.
 2. Zvol roli, v **Nastavení** vyplň jména a datum operace a **Uložit**.
 3. V konzoli Firebase v **Realtime Database → Data** se objeví větev `pairs/<kód>/profile`.
 
-## 7. Spáruj druhý telefon
+## 7. Nahraj tréninkový plán do databáze
+
+Plán (8 týdnů, cviky, pravidla) je zabudovaný v `js/plan.js`. Když ho nahraješ do databáze, appka používá verzi z databáze a jde ji později upravit bez zásahu do kódu (třeba v konzoli Firebase v **Data**).
+
+Nejjednodušší cesta: v appce **Nastavení → Tréninkový plán → Nahrát plán do databáze**. Funguje jen v režimu **Sdíleno**.
+
+Z počítače to jde i skriptem (potřebuje Node 18+):
+
+```
+node scripts/upload-plan.mjs --pair ABC123 --db https://koleno-zpet-default-rtdb.europe-west1.firebasedatabase.app
+```
+
+`--db` jde vynechat, když je `databaseURL` v `js/firebase-config.js`. Kód dvojice je v appce v **Nastavení**.
+
+Kdykoli plán v `js/plan.js` změníš, zvyš `version` a nahraj ho znovu. Appka v Nastavení ukáže, když má databáze starší verzi.
+
+## 8. Spáruj druhý telefon
 
 1. V appce v **Nastavení** klikni **Kopírovat** u odkazu pro parťáka. Odkaz má tvar `https://…/acl-recovery/?pair=ABC123`.
 2. Pošli ho druhému. Po otevření si zvolí druhou roli a od té chvíle vidíte stejná data.
 3. Kód se na telefonu uloží, dál stačí otevírat appku bez `?pair=`. Doporučujeme si ji přidat na plochu (Safari: Sdílet → Přidat na plochu, Chrome: menu → Přidat na plochu).
 
 ## Potíže
+
+**V Nastavení je u plánu „vestavěný“, i když jsem ho nahrál.**
+Nahrání proběhlo pod jiným kódem dvojice. Zkontroluj kód v Nastavení na tom telefonu a nahraj plán z něj, nebo skriptem se správným `--pair`.
 
 **V appce svítí „Lokálně“, i když je konfigurace vložená.**
 Otevři konzoli prohlížeče (F12 → Console). Nejčastější příčiny: chybí `databaseURL`, chybí čárka nebo uvozovka v objektu, nebo se nasadila stará verze (zkontroluj na GitHubu **Actions**, zda poslední běh prošel).
