@@ -7,6 +7,7 @@ Malá webová aplikace pro dva: jeden rehabilituje koleno po plastice ACL a zapi
 - **Žolík** – jízda na kole do práce (cca 20 km za den) nahradí nejvýš jeden silový trénink týdně. Další jízdy se zapíšou jako „navíc“ a do cíle se nepočítají.
 - **Historie** – všechny tréninky a jízdy, reakce parťáka (💪 ❤️ 🔥 👏).
 - **Fandění** – zprávy od parťáka, rychlé volby, odpovědi.
+- **Upozornění** – připomínka v tréninkové dny, nový trénink, zprávy a reakce na telefon (zapíná se v Nastavení, nastavení secrets v [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md)).
 - **Nastavení** – jména, datum operace, týdenní cíl, týden plánu (automaticky podle splněných týdnů, nebo ručně), nahrání plánu do databáze, role telefonu, odkaz pro parťáka.
 
 Čistý HTML/CSS/JS, žádný build. Funguje na telefonu i na počítači, ve světlém i tmavém režimu.
@@ -55,6 +56,10 @@ scripts/upload-plan.mjs nahrání plánu do Firebase z počítače
 js/store.js             úložiště: Firebase nebo localStorage, stejné rozhraní
 js/charts.js            SVG grafy (týdny, bolest, kruh cíle)
 js/app.js               obrazovky a logika
+js/push.js              upozornění: odběr a nastavení
+sw.js                   service worker (zobrazení upozornění)
+manifest.webmanifest    instalace na plochu
+scripts/notify.mjs      rozesílání upozornění (GitHub Action)
 js/firebase-config.js   konfigurace Firebase (volitelná)
 database.rules.json     pravidla Realtime Database
 docs/FIREBASE.md        návod na Firebase krok za krokem

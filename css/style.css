@@ -247,3 +247,8 @@ code.inline { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; backg
 .phase-steps span.now { background: var(--accent); }
 .wk-now { border-color: var(--accent); }
 .phase h2 { margin-top: 2px; }
+
+/* upozornění */
+.check { display: flex; align-items: center; gap: 10px; font-size: .92rem; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.seg.days button { flex: 1 1 0; padding: 8px 0; }
