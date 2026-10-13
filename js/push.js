@@ -4,7 +4,7 @@
 // Na iPhonu jen po přidání appky na plochu (iOS 16.4+).
 window.Push = (function () {
   // Veřejný VAPID klíč. Soukromý je jen v GitHub Secretu VAPID_PRIVATE_KEY.
-  const VAPID_PUBLIC = "BCaMYSbKxdExfTjcXvw4KRke6KmkXrT3nkCXyJhozudkPeh91a2pTId5o5zE59einoApJLu5xUZf7fwiobJANqQ";
+  const VAPID_PUBLIC = "BOL1w0gGuIj8yP1DrXa91-4Xcdlp7Eti8lRLBn5MC30yQJ5Jm5gxYVMuoTMQsbqhZ2ISDWA3v3lqBDikj3H_WtY";
   const DAY_NAMES = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
   const DEFAULT_PREFS = { reminders: true, messages: true, reactions: true, sessions: true };
 
