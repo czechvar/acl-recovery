@@ -73,3 +73,7 @@ Data ve Firebase: `pairs/<kód>/{profile, plan, sessions/<id>, messages/<id>, re
 Plán je v `js/plan.js`: slovník cviků `exercises` (název, proč, postup, tip) a pole `weeks`, kde každý týden má název, zaměření a položky `{ ex, sets, reps | time, hold, note }`. Týden plánu se určí automaticky podle počtu splněných týdnů, v Nastavení jde přepnout ručně (opakování týdne po bolesti nebo pauze).
 
 Po zapnutí Firebase jde plán nahrát do databáze (Nastavení → Nahrát plán, nebo `node scripts/upload-plan.mjs --pair KÓD`). Appka pak používá verzi z databáze, takže ho jde upravovat přímo v konzoli Firebase. Při změně v kódu zvyš `version` a nahraj znovu.
+
+Další zdroje (seznam `resources` v `js/plan.js`, v appce sekce „Další zdroje“ pod pravidly; bere se vždy z kódu):
+
+- [Periodizace tréninku, zánět achilovky, intervaly, horko místo ledu](https://karelholub.substack.com/p/periodizace-treninku-zanet-achilovky) (Karel Holub, newsletter Běžím dokud můžu)

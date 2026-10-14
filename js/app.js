@@ -296,7 +296,7 @@
     if (isPartner()) {
       return `<section class="section"><p class="eyebrow">Plán</p><h1>Co ${esc(her())} teď cvičí</h1>${renderWeekHeader(st)}</section>
       <section class="section"><div class="list">${st.week.items.map(it => renderExCard(it, null, true)).join("")}</div></section>
-      ${renderJokerCard(st)}${renderAllExercises()}${renderAllWeeks(st)}${renderRules()}`;
+      ${renderJokerCard(st)}${renderAllExercises()}${renderAllWeeks(st)}${renderRules()}${renderResources()}`;
     }
     const d = draft();
     const bike = d.kind === "bike";
@@ -327,7 +327,7 @@
       <button class="btn btn-primary btn-block" id="save-session" type="button" ${doneCount ? "" : "disabled"}>${bike ? (doneCount ? "Uložit jízdu" : "Zadej kilometry") : doneCount ? `Uložit trénink (${doneCount} ${plural(doneCount, "cvik", "cviky", "cviků")})` : "Označ aspoň jeden cvik"}</button>
       <button class="linkbtn" id="clear-draft" type="button">Vymazat rozpracovaný zápis</button>
     </section>
-    ${renderAllExercises()}${renderAllWeeks(st)}${renderRules()}`;
+    ${renderAllExercises()}${renderAllWeeks(st)}${renderRules()}${renderResources()}`;
   }
 
   function renderExCard(it, val, readOnly) {
@@ -392,6 +392,12 @@
   }
 
   /* ---------- historie ---------- */
+  function renderResources() {
+    const rs = (window.PLAN.resources || []).filter(r => /^https:\/\//.test(r.url || ""));
+    if (!rs.length) return "";
+    return `<section class="section"><h2>Další zdroje</h2><div class="list">${rs.map(r => `<div class="card-soft card"><a href="${esc(r.url)}" target="_blank" rel="noopener"><strong>${esc(r.title)}</strong> ↗</a>${r.author ? ` <span class="muted">· ${esc(r.author)}</span>` : ""}${r.note ? `<div class="small muted">${esc(r.note)}</div>` : ""}</div>`).join("")}</div></section>`;
+  }
+
   function renderHistory() {
     const ss = sessions(), days = everydayDays();
     if (!ss.length && !days.length) return `<section class="section"><h1>Historie</h1><div class="empty">Zatím žádný trénink. ${isPartner() ? "Až ho zapíše, uvidíš ho tady a můžeš zareagovat." : "První zápis je v záložce Trénink."}</div></section>`;

@@ -5,6 +5,10 @@ window.PLAN = {
   version: 4,
   name: "Návrat síly po ACL",
   weeklyGoal: 3,
+  // Další čtení k tématu. Appka je bere vždy z kódu, ne z databáze.
+  resources: [
+    { title: "Periodizace tréninku, zánět achilovky, intervaly, horko místo ledu", author: "Karel Holub, Běžím dokud můžu", note: "Část o periodizaci: jak trénink skládat do fází a proč plánovat i klidnější týdny.", url: "https://karelholub.substack.com/p/periodizace-treninku-zanet-achilovky" }
+  ],
   // Žolík: jízda na kole do práce nahradí nejvýš jeden silový trénink týdně.
   joker: { ex: "bike", perWeek: 1, minKm: 10, defaultKm: 20 },
   phases: [
