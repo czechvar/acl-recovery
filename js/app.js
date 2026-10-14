@@ -32,7 +32,7 @@
 
   const store = window.createStore();
   const BASE = `pairs/${pair}`;
-  const EMPTY = { profile: null, sessions: null, messages: null, reactions: null, plan: null };
+  const EMPTY = { profile: null, sessions: null, messages: null, reactions: null, plan: null, everyday: null };
   const state = {
     role: LS.get("role", null),            // "patient" | "partner"
     tab: params.get("tab") || LS.get("tab", "home"),
@@ -216,6 +216,8 @@
       </div>
     </section>
 
+    ${renderEveryday(st)}
+
     <section class="section">
       <div class="section-head"><h2>Tréninky za týden</h2><span class="small muted">posledních 8 týdnů</span></div>
       ${Charts.weeklyBars(st.weeks, st.goal)}
@@ -230,6 +232,34 @@
       <div class="section-head"><h2>Milníky</h2></div>
       ${renderMilestones(st)}
     </section>`;
+  }
+
+  // Starší plán v databázi nemá everyday (nebo id u položek), tak se vezme z vestavěného plánu.
+  function everydayItems(phaseId) {
+    const fromDb = (plan().phases.find(ph => ph.id === phaseId) || {}).everyday;
+    if (Array.isArray(fromDb) && fromDb.length && fromDb.every(i => i.id)) return fromDb;
+    return (window.PLAN.phases.find(ph => ph.id === phaseId) || {}).everyday || [];
+  }
+
+  // Jméno zaškrtnuté položky: nejdřív z aktuální fáze, pak z ostatních (id se mezi fázemi opakují).
+  function everydayName(id, phaseId) {
+    const ids = [phaseId, ...window.PLAN.phases.map(ph => ph.id)];
+    for (const pid of ids) { const it = everydayItems(pid).find(i => i.id === id); if (it) return it.name; }
+    return id;
+  }
+  const everydayDays = () => Object.entries(state.data.everyday || {}).map(([date, v]) => ({ date, ids: Object.keys(v || {}).filter(k => v[k]) })).filter(d => d.ids.length);
+
+  // Zápis: everyday/<datum>/<id položky> = true.
+  function renderEveryday(st) {
+    const items = everydayItems(st.phase.id);
+    if (!items.length) return "";
+    const log = state.data.everyday || {}, today = todayISO(), done = log[today] || {};
+    const doneToday = items.filter(i => done[i.id]).length;
+    const thisWeek = Object.entries(log).filter(([d]) => weekKey(d) === weekKey(today)).reduce((n, [, v]) => n + Object.values(v || {}).filter(Boolean).length, 0);
+    const ro = isPartner();
+    return `<section class="section"><div class="section-head"><h2>Během dne</h2><span class="small muted">dnes ${doneToday} z ${items.length} · týden ${thisWeek}×</span></div>
+      <div class="list">${items.map(i => `<label class="card-soft card small check everyday${done[i.id] ? " on" : ""}"><input type="checkbox" data-everyday="${esc(i.id)}"${done[i.id] ? " checked" : ""}${ro ? " disabled" : ""}><span><strong>${esc(i.name)}.</strong> <span class="muted">${esc(i.text)}</span></span></label>`).join("")}</div>
+      <p class="small muted" style="margin-top:6px">${ro ? `Odškrtává ${esc(her())}. Do tréninků se nepočítá.` : "Odškrtni, co dnes zvládneš. Do tréninků se nepočítá."}</p></section>`;
   }
 
   function renderMilestones(st) {
@@ -363,13 +393,15 @@
 
   /* ---------- historie ---------- */
   function renderHistory() {
-    const ss = sessions();
-    if (!ss.length) return `<section class="section"><h1>Historie</h1><div class="empty">Zatím žádný trénink. ${isPartner() ? "Až ho zapíše, uvidíš ho tady a můžeš zareagovat." : "První zápis je v záložce Trénink."}</div></section>`;
+    const ss = sessions(), days = everydayDays();
+    if (!ss.length && !days.length) return `<section class="section"><h1>Historie</h1><div class="empty">Zatím žádný trénink. ${isPartner() ? "Až ho zapíše, uvidíš ho tady a můžeš zareagovat." : "První zápis je v záložce Trénink."}</div></section>`;
     const reacts = state.data.reactions || {};
     const st = stats();
     const moods = ["skvěle", "dobře", "ok", "těžké", "bolelo"], swell = ["bez otoku", "mírný otok", "výrazný otok"];
     return `<section class="section"><div class="section-head"><h1>Historie</h1><span class="muted small num">${ss.length} ${plural(ss.length, "trénink", "tréninky", "tréninků")}</span></div>
-    <div class="list">${ss.map(s => {
+    <div class="list">${[...ss.map(s => ({ date: s.date, s })), ...days.map(d => ({ date: d.date, d }))].sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : a.d ? -1 : b.d ? 1 : 0).map(({ s, d }) => {
+      if (d) return `<article class="card card-soft sess"><div class="sess-head"><span class="d">${esc(fmtLong(d.date))} <span class="muted small">· během dne</span></span><span class="chip ok">${d.ids.length}×</span></div>
+        <div class="chips">${d.ids.map(id => `<span class="chip">${esc(everydayName(id, st.phase.id))}</span>`).join("")}</div></article>`;
       const ex = isBike(s) ? [] : Object.entries(s.exercises || {}).filter(([, v]) => (v?.sets || 0) > 0);
       const bikeChips = isBike(s) ? `<span class="chip ok">🚲 Kolo ${Number(s.km) || 0} km${s.minutes ? ` · ${s.minutes} min` : ""}</span><span class="chip">${st.countedBike.has(s.id) ? "žolík, počítá se" : "navíc, nepočítá se"}</span>` : "";
       const rs = Object.entries(reacts[s.id] || {}).map(([id, r]) => ({ id, ...r }));
@@ -456,6 +488,7 @@
     view.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
     view.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => { const id = b.dataset.toggle; const cur = state.openEx[id] !== undefined ? state.openEx[id] : state.showSteps; state.openEx[id] = !cur; render(); });
     const ts = $("#toggle-steps"); if (ts) ts.onclick = () => { state.showSteps = !state.showSteps; state.openEx = {}; LS.set("showSteps", state.showSteps); render(); };
+    view.querySelectorAll("[data-everyday]").forEach(c => c.onchange = () => store.set(`${BASE}/everyday/${todayISO()}/${c.dataset.everyday}`, c.checked ? true : null));
     const te = $("#toggle-ex"); if (te) te.onclick = () => { state.showAllEx = !state.showAllEx; render(); };
     view.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
       const d = draft(), id = b.dataset.set, n = Number(b.dataset.n);

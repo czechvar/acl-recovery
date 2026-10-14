@@ -2,15 +2,37 @@
 // týdny 5–8 přidávání zátěže. Stejná struktura se ukládá do databáze pod
 // pairs/<kód>/plan; appka pak použije verzi z databáze místo této vestavěné.
 window.PLAN = {
-  version: 3,
+  version: 4,
   name: "Návrat síly po ACL",
   weeklyGoal: 3,
   // Žolík: jízda na kole do práce nahradí nejvýš jeden silový trénink týdně.
   joker: { ex: "bike", perWeek: 1, minKm: 10, defaultKm: 20 },
   phases: [
-    { id: 1, name: "Základy síly", range: "týdny 1–4", summary: "Probudit kvadriceps, získat jistotu v koleni a čistou techniku. Vlastní váha, guma, židle." },
-    { id: 2, name: "Přidáváme zátěž", range: "týdny 5–8", summary: "Činka nebo lahev v rukou, schod, jednonožní mosty, rychlá chůze a první lehký běh." },
-    { id: 3, name: "Dynamika", range: "po 8. týdnu", summary: "Skoky, změny směru, návrat ke sportu. Nejlépe pod dohledem fyzioterapeuta." }
+    { id: 1, name: "Základy síly", range: "týdny 1–4", summary: "Probudit kvadriceps, získat jistotu v koleni a čistou techniku. Vlastní váha, guma, židle.",
+      // Přirozený pohyb během dne. Odškrtává se zvlášť, do tréninků se nepočítá.
+      everyday: [
+        { id: "straight", name: "Plné propnutí", text: "Vleže ani vsedě nepodkládej koleno polštářem. Když sedíš s nohou nahoře, nech koleno volně propnout." },
+        { id: "quad", name: "Zatnutí stehna u stolu", text: "Vsedě propni nohu a zatni stehno na 5 s, 10×. V práci, v autě, u televize." },
+        { id: "chair", name: "Vstávání ze židle bez rukou", text: "Pokaždé, když vstáváš: váha rovnoměrně na obou nohách, koleno nad špičkou, ne dovnitř." },
+        { id: "teeth", name: "Stoj na operované noze při čištění zubů", text: "30 s, druhou rukou se lehce drž umyvadla. Koleno mírně pokrčené." },
+        { id: "stairs", name: "Schody", text: "Nahoru zdravou nohou první, dolů operovanou první, ruka na zábradlí. Když koleno nepíchá, zkus nahoru střídavě." },
+        { id: "walk", name: "Chůze bez kulhání", text: "Krátké procházky. Dopad na patu, koleno při kroku propnout, stejně dlouhé kroky." }
+      ] },
+    { id: 2, name: "Přidáváme zátěž", range: "týdny 5–8", summary: "Činka nebo lahev v rukou, schod, jednonožní mosty, rychlá chůze a první lehký běh.",
+      everyday: [
+        { id: "stairs", name: "Schody místo výtahu", text: "Střídavě nahoru i dolů. Dolů pomalu, koleno nad špičkou, neuhýbá dovnitř." },
+        { id: "chair", name: "Vstávání víc z operované nohy", text: "Při vstávání ze židle posuň zdravou nohu trochu dopředu, ať práci dělá operovaná." },
+        { id: "teeth", name: "Stoj na jedné noze při čištění zubů", text: "Na operované noze, 30–60 s. Těžší varianta: zavřené oči." },
+        { id: "squat", name: "Zvedání věcí dřepem", text: "Ze země zvedej dřepem místo předklonu. Kolena ven, záda rovná." },
+        { id: "walk", name: "Rychlá chůze", text: "Půl hodiny svižně, klidně do mírného kopce. Z kopce kratším krokem." }
+      ] },
+    { id: 3, name: "Dynamika", range: "po 8. týdnu", summary: "Skoky, změny směru, návrat ke sportu. Nejlépe pod dohledem fyzioterapeuta.",
+      everyday: [
+        { id: "stairs", name: "Schody svižně", text: "Nahoru ob schod, dolů v klidu a pod kontrolou." },
+        { id: "teeth", name: "Stoj na jedné noze při čištění zubů", text: "Zavřené oči nebo na polštáři, každá noha 30–60 s." },
+        { id: "terrain", name: "Chůze v terénu", text: "Les, tráva, nerovný povrch. Koleno si zvyká na různé směry." },
+        { id: "squat", name: "Zvedání věcí dřepem", text: "I těžší věci, nákup nebo dítě: dřepem, kolena ven." }
+      ] }
   ],
   rules: [
     { title: "Žádná ostrá bolest", text: "Tlak nebo tah ve svalech je v pořádku. Píchání v koleni nebo pod čéškou znamená cvik hned ukončit." },
