@@ -1,0 +1,356 @@
+From f7247b951785ce494205c5c10deccffc199981d7 Mon Sep 17 00:00:00 2001
+From: czechvar <janantl@gmail.com>
+Date: Fri, 30 Oct 2026 09:25:56 +0000
+Subject: [PATCH] Add daily Rehabka: doctor's exercises, streak, clinic visits,
+ reminders
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Official rehab at the clinic started 30. 10. 2026. The three exercises the
+doctor prescribed (hold on the stair edge, band calf raises on the stair,
+toe taps at the door frame) are added to the exercise list and shown in a
+new "Rehabka · každý den" section on the overview. They are ticked once a
+day under pairs/<code>/rehab/<date>/<exercise>, independent of plan
+sessions, with a days-in-a-row counter, a milestone for 7 days, history
+entries and backfilling for past days.
+
+The section also shows the next clinic visit (RHB / laser dates from the
+Rehabka IC calendar) with a link to the calendar. The notifier sends a
+daily reminder when the exercises are not all ticked by the reminder hour
+and a heads-up the day before a clinic visit.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018kz9BWH4QtBQHWmSQLbGt1
+---
+ README.md           |  3 ++
+ css/style.css       | 10 +++++++
+ database.rules.json |  7 +++++
+ js/app.js           | 71 +++++++++++++++++++++++++++++++++++++++------
+ js/plan.js          | 53 ++++++++++++++++++++++++++++++++-
+ scripts/notify.mjs  | 17 +++++++++--
+ 6 files changed, 149 insertions(+), 12 deletions(-)
+
+diff --git a/README.md b/README.md
+index f178bfd..f38ad89 100644
+--- a/README.md
++++ b/README.md
+@@ -5,6 +5,7 @@ Malá webová aplikace na rehabilitaci Achillovy šlachy (tendinopatie, bolest p
+ - **Přehled** – splněné tréninky v týdnu, série týdnů, bolest šlachy, fáze plánu, milníky.
+ - **Trénink** – 10týdenní plán ve třech fázích, sestava pro aktuální týden, zápis sérií a **zátěže v kg**, u cviků na čas **časovač** s délkou z plánu (po doběhnutí pípne a odškrtne sérii) a mezi sériemi **pauza** s odpočtem (u výponů, s nápovědou „minule X kg“), bolest 0–10, ranní ztuhlost, pocit, poznámka.
+ - **Žolíci** – jiná aktivita místo tréninku z plánu: kolo do práce (nejvýš 1× týdně) a KB5, kettlebelly a protažení (nejvýš 3× týdně, s odkazem na aktivitu v Suuntu). Další zápisy nad limit se uloží jako „navíc“. Cíl jde nastavit 2–7× týdně.
++- **Rehabka** – cviky od lékaře z rehabilitace (od 30. 10. 2026): výdrž na schodu v rovině, výpony na schodu s gumou do strany, dynamika u futer. Dělají se **každý den**, odškrtávají se na Přehledu zvlášť od tréninků, appka počítá dny v řadě a večer připomene, co ještě chybí. U sekce je nejbližší termín na klinice (RHB, laser) a odkaz na kalendář. Seznam cviků a termínů je v `js/plan.js` (`rehab`).
+ - **Historie**, **Fandění**, **Nastavení** – jako u kolena.
+ 
+ Čistý HTML/CSS/JS, žádný build.
+@@ -21,6 +22,8 @@ Postaveno na principu „šlacha potřebuje zátěž, ne klid“, jen ve správn
+ 
+ Hlídá se bolest při cvičení (do 3–4 z 10 je v pořádku) a **ranní ztuhlost** – když je ráno horší než den předtím, uber a týden zopakuj.
+ 
++Rehabka od lékaře (`rehab` v `js/plan.js`) běží vedle plánu: `items` jsou cviky s cílem (`sets`, `time` nebo `reps`), `visits` termíny na klinice, `calendar` odkaz na kalendář. Odškrtnutí se ukládá do `pairs/<kód>/rehab/<datum>/<cvik>`.
++
+ Cviky odkazují na [návod Fyziokliniky](https://fyzioklinika.cz/poradna/navody-na-cviceni/boli-me/boli-me-pata-achillova-slacha/cviky-pri-bolestech-paty-achillovy-slachy). Celý plán je v `js/plan.js` (`exercises` + `weeks`), úprava je stejná jako u kolena. Cvik s `load: true` má v zápisu políčko na kila, `rest` je délka pauzy mezi sériemi.
+ 
+ Další zdroje (seznam `resources` v `js/plan.js`, v appce sekce „Další zdroje“):
+diff --git a/css/style.css b/css/style.css
+index 284ef22..7094795 100644
+--- a/css/style.css
++++ b/css/style.css
+@@ -272,3 +272,13 @@ code.inline { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; backg
+ .everyday-done { display: grid; gap: 6px; }
+ .check.everyday-mini { font-size: .85rem; color: var(--fg-muted); text-decoration: line-through; cursor: pointer; }
+ .seg.days button { flex: 1 1 0; padding: 8px 0; }
++
++/* rehabka: cviky od lékaře, odškrtávání na Přehledu */
++.ex.rehab .check { cursor: pointer; }
++.ex.rehab .check > span { display: grid; gap: 2px; }
++.ex.rehab.done .check > span strong { color: var(--good); }
++.rehab-more { margin-top: 8px; }
++.rehab-more summary { cursor: pointer; list-style: none; width: max-content; color: var(--deep); font-weight: 600; font-size: .85rem; }
++.rehab-more summary::-webkit-details-marker { display: none; }
++.rehab-more[open] summary { margin-bottom: 2px; }
++.rehab-more .ex-body { display: grid; margin-top: 6px; }
+diff --git a/database.rules.json b/database.rules.json
+index ef9bf1f..d276a1f 100644
+--- a/database.rules.json
++++ b/database.rules.json
+@@ -31,6 +31,13 @@
+             }
+           }
+         },
++        "rehab": {
++          "$date": {
++            "$item": {
++              ".validate": "newData.isBoolean()"
++            }
++          }
++        },
+         "plan": {
+           ".validate": "newData.hasChildren(['version', 'weeks', 'exercises'])"
+         }
+diff --git a/js/app.js b/js/app.js
+index 6654c21..5550713 100644
+--- a/js/app.js
++++ b/js/app.js
+@@ -32,7 +32,7 @@
+ 
+   const store = window.createStore();
+   const BASE = `pairs/${pair}`;
+-  const EMPTY = { profile: null, sessions: null, messages: null, reactions: null, plan: null, everyday: null };
++  const EMPTY = { profile: null, sessions: null, messages: null, reactions: null, plan: null, everyday: null, rehab: null };
+   const state = {
+     role: LS.get("role", null),            // "patient" | "partner"
+     tab: params.get("tab") || LS.get("tab", "home"),
+@@ -62,7 +62,7 @@
+   }
+   function planForDb() {
+     const p = window.PLAN;
+-    return { version: p.version, name: p.name, weeklyGoal: p.weeklyGoal, jokers: p.jokers || null, source: p.source || null, phases: p.phases, rules: p.rules, exercises: p.exercises, weeks: p.weeks, cheers: p.cheers, uploadedAt: Date.now() };
++    return { version: p.version, name: p.name, weeklyGoal: p.weeklyGoal, jokers: p.jokers || null, source: p.source || null, rehab: p.rehab || null, phases: p.phases, rules: p.rules, exercises: p.exercises, weeks: p.weeks, cheers: p.cheers, uploadedAt: Date.now() };
+   }
+   // Poslední zapsaná zátěž u cviku, pro nápovědu a progresi.
+   function lastKg(id) { const s = sessions().find(s => Number(s.exercises?.[id]?.kg) > 0); return s ? Number(s.exercises[id].kg) : null; }
+@@ -139,8 +139,10 @@
+     const week = P.weeks.find(w => w.week === planWeek) || P.weeks[P.weeks.length - 1];
+     const phase = P.phases.find(ph => ph.id === week.phase) || P.phases[0];
+ 
++    const rehabActive = rehabItems().length > 0;
+     return { goal, thisWeekCount: byWeek[thisWeek] || 0, weeks, streak, bestStreak, weeksHit, calmRun, total: ss.filter(s => !isJoker(s)).length + countedJoker.size, last, sinceLast, weekPost, trainedToday,
+       jokerByWeek, strengthThisWeek, countedJoker, bikeRides: bikeRides.length, bikeKm, maxKg,
++      rehabActive, rehabDoneToday: rehabActive && rehabDone(today), rehabStreak: rehabActive ? rehabStreak() : 0,
+       planWeek, week, phase, planAuto: !override, planDone: weeksHit >= P.weeks.length,
+       painPoints: ss.slice(0, 12).reverse().map(s => ({ pain: Number(s.pain) || 0, label: fmtShort(s.date) })) };
+   }
+@@ -177,11 +179,12 @@
+     const st = stats(), p = profile(), P = plan();
+     let title, lede;
+     if (isPartner()) {
+-      title = st.thisWeekCount >= st.goal ? `${her()} má tento týden splněno.` : st.trainedToday ? `${her()} má dnes odcvičeno.` : `${her()} má tento týden ${st.thisWeekCount} z ${st.goal}.`;
++      title = st.thisWeekCount >= st.goal ? `${her()} má tento týden splněno.` : st.trainedToday ? `${her()} má dnes odcvičeno.` : st.rehabDoneToday ? `${her()} má dnes rehabku hotovou.` : `${her()} má tento týden ${st.thisWeekCount} z ${st.goal}.`;
+       lede = st.trainedToday ? "Napiš pár slov, ať ví, že to vidíš. Reakce na trénink najdeš v Historii." : st.sinceLast === null ? "Zatím žádný trénink. Pošli první povzbuzení." : st.sinceLast >= 3 ? `Poslední trénink před ${st.sinceLast} dny. Dobrý moment na popíchnutí.` : "Drží tempo. Krátká zpráva udělá radost.";
+     } else {
+-      title = st.trainedToday ? "Dnes hotovo. Odpočívej." : st.thisWeekCount >= st.goal ? "Týden splněný. Víc není potřeba." : st.thisWeekCount === 0 ? "Nový týden, čistý štít." : `Ještě ${st.goal - st.thisWeekCount}× a týden je tvůj.`;
+-      lede = st.trainedToday ? "Šlacha se přestavuje v klidu. Zítra ráno zapiš, jak se probudila." : `${st.week.title}: ${st.week.focus}`;
++      const rehabOpen = st.rehabActive && !st.rehabDoneToday;
++      title = st.trainedToday ? (rehabOpen ? "Trénink hotový, zbývá rehabka." : "Dnes hotovo. Odpočívej.") : st.thisWeekCount >= st.goal ? "Týden splněný. Víc není potřeba." : st.thisWeekCount === 0 ? "Nový týden, čistý štít." : `Ještě ${st.goal - st.thisWeekCount}× a týden je tvůj.`;
++      lede = st.trainedToday ? (rehabOpen ? "Tři cviky od lékaře a den je kompletní. Odškrtni je níž." : "Šlacha se přestavuje v klidu. Zítra ráno zapiš, jak se probudila.") : rehabOpen && st.thisWeekCount >= st.goal ? "Rehabka ale platí každý den, i dnes." : `${st.week.title}: ${st.week.focus}`;
+     }
+     const name = isPartner() ? "" : (p.patientName ? `Ahoj ${esc(p.patientName)}` : "Ahoj");
+     const lastMsg = messages().filter(m => m.from === "partner").slice(-1)[0];
+@@ -212,10 +215,13 @@
+         <div class="stat"><div class="v num">${st.streak}</div><div class="l">${plural(st.streak, "týden", "týdny", "týdnů")} v řadě se splněným cílem</div></div>
+         <div class="stat"><div class="v num">${st.sinceLast === null ? "–" : st.sinceLast === 0 ? "dnes" : st.sinceLast}</div><div class="l">${st.sinceLast === null ? "žádný trénink" : st.sinceLast === 0 ? "poslední trénink" : (st.sinceLast === 1 ? "den od tréninku" : "dní od tréninku")}</div></div>
+         <div class="stat"><div class="v num">${st.weekPost ?? "–"}</div><div class="l">${st.weekPost ? "týden rehabilitace" : "začátek rehabilitace v nastavení"}</div></div>
++        ${st.rehabActive ? `<div class="stat"><div class="v num">${st.rehabStreak}</div><div class="l">${plural(st.rehabStreak, "den", "dny", "dní")} v řadě rehabka${st.rehabDoneToday ? "" : st.rehabStreak ? ", dnes ještě ne" : ""}</div></div>` : ""}
+         ${st.bikeRides ? `<div class="stat"><div class="v num">${Math.round(st.bikeKm)} km</div><div class="l">na kole do práce, ${st.bikeRides} ${plural(st.bikeRides, "jízda", "jízdy", "jízd")}</div></div>` : ""}
+       </div>
+     </section>
+ 
++    ${renderRehab(st)}
++
+     <section class="section">
+       <div class="phase">
+         <p class="eyebrow">Týden plánu ${st.planWeek} z ${P.weeks.length} · ${esc(st.week.title)}</p>
+@@ -281,6 +287,45 @@
+       <p class="small muted" style="margin-top:6px">${ro ? `Odškrtává ${esc(her())}. Do tréninků se nepočítá.` : day === today ? "Odškrtni, co dnes zvládneš. Do tréninků se nepočítá." : `Doplňuješ ${esc(fmtLong(day))}. Do tréninků se nepočítá.`}</p></section>`;
+   }
+ 
++  /* ---------- rehabka: cviky od lékaře, každý den ---------- */
++  // Rehabka z databáze má přednost, když má položky; jinak vestavěná z plánu v kódu.
++  function rehab() { const r = plan().rehab; return r && Array.isArray(r.items) && r.items.length ? r : window.PLAN.rehab || null; }
++  const rehabEx = id => plan().exercises[id] || window.PLAN.exercises[id] || { name: id, steps: [] };
++  function rehabItems() { const r = rehab(); return r ? r.items.filter(it => it && it.ex) : []; }
++  const rehabTarget = it => `${it.sets} × ${it.time || it.reps}`;
++  const rehabLog = () => state.data.rehab || {};
++  // Den je splněný, když jsou odškrtnuté všechny cviky.
++  function rehabDone(date) { const d = rehabLog()[date] || {}, items = rehabItems(); return items.length > 0 && items.every(it => d[it.ex]); }
++  const rehabDays = () => Object.entries(rehabLog()).map(([date, v]) => ({ date, ids: Object.keys(v || {}).filter(k => v[k]) })).filter(d => d.ids.length);
++  // Dny v řadě se všemi cviky. Dnešek se počítá, jen když už je hotový; jinak se začíná od včerejška.
++  function rehabStreak() {
++    let n = 0;
++    for (let i = rehabDone(todayISO()) ? 0 : 1; i < 400; i++) { if (rehabDone(daysAgo(i))) n++; else break; }
++    return n;
++  }
++  function nextVisit() { const t = todayISO(); return ((rehab() || {}).visits || []).filter(v => v && v.date >= t).sort((a, b) => a.date < b.date ? -1 : 1)[0] || null; }
++
++  // Zápis: rehab/<datum>/<cvik> = true. Den se přepíná stejně jako u „Během dne“ (state.everydayDate).
++  function renderRehab(st) {
++    const R = rehab(), items = rehabItems();
++    if (!R || !items.length) return "";
++    const today = todayISO(), day = everydayDate(), done = rehabLog()[day] || {};
++    const doneN = items.filter(it => done[it.ex]).length, allDone = doneN === items.length;
++    const ro = isPartner(), visit = nextVisit(), cal = safeLink(R.calendar), C = R.clinic || {};
++    const streak = st.rehabStreak;
++    return `<section class="section" id="rehab">
++      <div class="section-head"><h2>${esc(R.name || "Rehabka")} · každý den</h2><span class="small muted">${esc(day === today ? "dnes" : fmtLong(day))} ${doneN} z ${items.length}${streak ? ` · ${streak} ${plural(streak, "den", "dny", "dní")} v řadě` : ""}</span></div>
++      ${ro ? "" : `<div class="seg" style="margin-bottom:8px">${[["Dnes", 0], ["Včera", 1], ["Předevčírem", 2]].map(([l, n]) => `<button type="button" data-ev-day="${n}" class="${day === daysAgo(n) ? "on" : ""}">${l}</button>`).join("")}</div>`}
++      ${allDone ? `<div class="card-soft card small everyday-all" style="margin-bottom:10px">Rehabka ${day === today ? "na dnešek" : esc(fmtLong(day))} hotová 👏</div>` : ""}
++      <div class="list">${items.map(it => { const e = rehabEx(it.ex), on = !!done[it.ex]; return `<div class="card ex rehab ${on ? "done" : ""}">
++        <label class="check everyday"><input type="checkbox" data-rehab="${esc(it.ex)}"${on ? " checked" : ""}${ro ? " disabled" : ""}><span><strong>${esc(e.name)}</strong><span class="ex-target">${esc(rehabTarget(it))}${it.note ? ` · ${esc(it.note)}` : ""}${e.alias ? ` · ${esc(e.alias)}` : ""}</span></span></label>
++        <details class="rehab-more"><summary>Popis</summary><div class="ex-body small">${renderExBody(e)}</div></details>
++      </div>`; }).join("")}</div>
++      ${visit ? `<div class="card-soft card small" style="margin-top:10px"><strong>${visit.date === today ? "Dnes" : esc(fmtLong(visit.date))}${visit.time ? ` ${esc(visit.time)}` : ""}: ${esc(visit.what || "rehabka")}.</strong> <span class="muted">${esc([C.name, C.address].filter(Boolean).join(", "))}${C.phone ? `, ${esc(C.phone)}` : ""}.</span>${cal ? ` <a href="${esc(cal)}" target="_blank" rel="noopener">Kalendář ↗</a>` : ""}</div>` : cal ? `<p class="small" style="margin-top:10px"><a href="${esc(cal)}" target="_blank" rel="noopener">Kalendář rehabky ↗</a></p>` : ""}
++      <p class="small muted" style="margin-top:6px">${esc(R.note || "")}${ro ? ` Odškrtává ${esc(her())}.` : day === today ? "" : ` Doplňuješ ${esc(fmtLong(day))}.`} Do tréninků se nepočítá.</p>
++    </section>`;
++  }
++
+   function renderMilestones(st) {
+     return `<div class="miles">${window.MILESTONES.map(m => `<div class="mile ${m.test(st) ? "hit" : ""}"><div class="n">${esc(m.name)}</div><div class="d">${esc(m.desc)}</div></div>`).join("")}</div>`;
+   }
+@@ -451,13 +496,16 @@
+ 
+   /* ---------- historie ---------- */
+   function renderHistory() {
+-    const ss = sessions(), days = everydayDays();
+-    if (!ss.length && !days.length) return `<section class="section"><h1>Historie</h1><div class="empty">Zatím žádný trénink. ${isPartner() ? "Až ho zapíše, uvidíš ho tady a můžeš zareagovat." : "První zápis je v záložce Trénink."}</div></section>`;
++    const ss = sessions(), days = everydayDays(), rdays = rehabDays(), rn = rehabItems().length;
++    if (!ss.length && !days.length && !rdays.length) return `<section class="section"><h1>Historie</h1><div class="empty">Zatím žádný trénink. ${isPartner() ? "Až ho zapíše, uvidíš ho tady a můžeš zareagovat." : "První zápis je v záložce Trénink."}</div></section>`;
+     const reacts = state.data.reactions || {};
+     const st = stats();
+     const moods = ["skvěle", "dobře", "ok", "těžké", "bolelo"], swell = ["ráno bez ztuhlosti", "ráno mírně ztuhlá", "ráno výrazně ztuhlá"];
+     return `<section class="section"><div class="section-head"><h1>Historie</h1><span class="muted small num">${ss.length} ${plural(ss.length, "trénink", "tréninky", "tréninků")}</span></div>
+-    <div class="list">${[...ss.map(s => ({ date: s.date, s })), ...days.map(d => ({ date: d.date, d }))].sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : a.d ? -1 : b.d ? 1 : 0).map(({ s, d }) => {
++    <div class="list">${[...ss.map(s => ({ date: s.date, s })), ...days.map(d => ({ date: d.date, d })), ...rdays.map(r => ({ date: r.date, r }))].sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : a.r ? -1 : b.r ? 1 : a.d ? -1 : b.d ? 1 : 0).map(({ s, d, r }) => {
++      if (r) return `<article class="card card-soft sess"><div class="sess-head"><span class="d">${esc(fmtLong(r.date))} <span class="muted small">· rehabka</span></span><span class="chip ${rn && r.ids.length >= rn ? "ok" : ""}">${rn ? `${r.ids.length} z ${rn}` : `${r.ids.length}×`}</span></div>
++        <div class="chips">${r.ids.slice().sort((a, b) => rehabItems().findIndex(i => i.ex === a) - rehabItems().findIndex(i => i.ex === b)).map(id => `<span class="chip">${esc(rehabEx(id).name)}</span>`).join("")}</div>
++        ${!isPartner() ? `<div class="reacts"><button type="button" class="linkbtn" data-ev-edit="${esc(r.date)}" data-target="rehab" style="margin-left:auto">Upravit</button></div>` : ""}</article>`;
+       if (d) return `<article class="card card-soft sess"><div class="sess-head"><span class="d">${esc(fmtLong(d.date))} <span class="muted small">· během dne</span></span><span class="chip ok">${d.ids.length}×</span></div>
+         <div class="chips">${d.ids.map(id => `<span class="chip">${esc(everydayName(id, st.phase.id))}</span>`).join("")}</div>
+         ${!isPartner() ? `<div class="reacts"><button type="button" class="linkbtn" data-ev-edit="${esc(d.date)}" style="margin-left:auto">Upravit</button></div>` : ""}</article>`;
+@@ -639,7 +687,12 @@
+     view.querySelectorAll("[data-everyday]").forEach(c => c.onchange = () => store.set(`${BASE}/everyday/${everydayDate()}/${c.dataset.everyday}`, c.checked ? true : null));
+     view.querySelectorAll("[data-ev-day]").forEach(b => b.onclick = () => { state.everydayDate = daysAgo(Number(b.dataset.evDay)); render(); });
+     const evd = $("#ev-date"); if (evd) evd.onchange = () => { state.everydayDate = evd.value || todayISO(); render(); };
+-    view.querySelectorAll("[data-ev-edit]").forEach(b => b.onclick = () => { state.everydayDate = b.dataset.evEdit; go("home"); const el = $("#everyday"); if (el) el.scrollIntoView(); });
++    view.querySelectorAll("[data-ev-edit]").forEach(b => b.onclick = () => { state.everydayDate = b.dataset.evEdit; go("home"); const el = $("#" + (b.dataset.target || "everyday")); if (el) el.scrollIntoView(); });
++    view.querySelectorAll("[data-rehab]").forEach(c => c.onchange = () => {
++      const all = [...view.querySelectorAll("[data-rehab]")].every(x => x.checked), day = everydayDate();
++      store.set(`${BASE}/rehab/${day}/${c.dataset.rehab}`, c.checked ? true : null);
++      if (c.checked && all) { const n = rehabStreak(); toast(day === todayISO() ? `Rehabka hotová${n > 1 ? `, ${n} ${plural(n, "den", "dny", "dní")} v řadě` : ""} 👏` : `Rehabka za ${fmtLong(day)} doplněna`); }
++    });
+     const te = $("#toggle-ex"); if (te) te.onclick = () => { state.showAllEx = !state.showAllEx; render(); };
+     view.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
+       const d = draft(), id = b.dataset.set, n = Number(b.dataset.n), box = b.closest(".sets").dataset;
+diff --git a/js/plan.js b/js/plan.js
+index 00a5139..cb7efd4 100644
+--- a/js/plan.js
++++ b/js/plan.js
+@@ -6,7 +6,7 @@
+ const SRC = "https://fyzioklinika.cz/poradna/navody-na-cviceni/boli-me/boli-me-pata-achillova-slacha/cviky-pri-bolestech-paty-achillovy-slachy";
+ 
+ window.PLAN = {
+-  version: 6,
++  version: 7,
+   name: "Silná Achillovka",
+   weeklyGoal: 3,
+   source: SRC,
+@@ -20,6 +20,32 @@ window.PLAN = {
+     { id: "bike", ex: "bike", short: "Kolo do práce", icon: "🚲", perWeek: 1, km: true, minKm: 10, defaultKm: 20, placeholder: "Např. protivítr, šlacha po jízdě v klidu…" },
+     { id: "kb5", ex: "kb5", short: "KB5", icon: "🏋️", perWeek: 3, link: true, placeholder: "Např. swingy 16 kg, protažení, šlacha v klidu…" }
+   ],
++  // Rehabka: cviky od lékaře (IC klinika, od 30. 10. 2026). Dělají se každý den, odškrtávají se
++  // zvlášť na Přehledu (rehab/<datum>/<cvik>) a do tréninků z plánu se nepočítají.
++  rehab: {
++    since: "2026-10-30",
++    name: "Rehabka",
++    note: "Cviky od lékaře z rehabilitace. Jednou denně, všechny tři. Klidně rozděl během dne.",
++    clinic: { name: "IC klinika, Rehabilitace & Fitness", address: "Nové sady 676/4, Brno", phone: "+420 530 347 169", hours: "Po–Čt 7–15, Pá 7–12" },
++    calendar: "https://calendar.google.com/calendar/u/0?cid=Mzg5NGViMDhlMDNhMDJjZjkwZmY0OGJjYjkwNmFhYjI1ODMyNWQzYzhkMTUyYzQ5MTRlYjcxNDRkOGMwMjNhZEBncm91cC5jYWxlbmRhci5nb29nbGUuY29t",
++    items: [
++      { ex: "rhbhold", sets: "3–4", time: "40–45 s" },
++      { ex: "rhbband", sets: "3–4", reps: "15–20" },
++      { ex: "rhbtap", sets: "3–4", reps: "15–20" }
++    ],
++    // Termíny na klinice (z kalendáře Rehabka IC). Appka ukáže nejbližší.
++    visits: [
++      { date: "2026-10-30", time: "8:00", what: "RHB #1" },
++      { date: "2026-11-06", time: "8:30", what: "RHB #2" },
++      { date: "2026-11-09", time: "13:15", what: "Laser #1" },
++      { date: "2026-11-11", time: "13:15", what: "Laser #2" },
++      { date: "2026-11-12", time: "13:45", what: "Laser #3" },
++      { date: "2026-11-13", time: "9:30", what: "RHB #3" },
++      { date: "2026-11-16", time: "8:45", what: "Laser #4" },
++      { date: "2026-11-18", time: "8:45", what: "Laser #5" },
++      { date: "2026-11-20", time: "7:30", what: "RHB #4" }
++    ]
++  },
+   phases: [
+     { id: 1, name: "Zklidnění", range: "týdny 1–2", summary: "Šlacha bolí i při chůzi. Žádné švihy ani skoky. Izometrické výdrže tlumí bolest, horní tělo a střed těla cvič vsedě nebo vleže.",
+       // Přirozený pohyb během dne. Odškrtává se zvlášť, do tréninků se nepočítá.
+@@ -168,6 +194,30 @@ window.PLAN = {
+       gear: "Běžecké boty s mírným dropem (8–10 mm), rovný terén.",
+       avoid: ["Kopce a sprinty: zatím ne.", "Bosé nebo minimalistické boty: šlacha by dostala víc práce.", "Běh dva dny po sobě."]
+     },
++    rhbhold: {
++      name: "Výdrž na schodu v rovině", alias: "Rehabka · izometrie na hraně", type: "time", rest: "1 min",
++      why: "Cvik od lékaře. Chodidlo vodorovně s hranou schodu pod klouby prstů: šlacha drží tah v prodloužené poloze, bez pohybu. Tlumí bolest a zvyká šlachu na zátěž.",
++      steps: ["Stoupni si na schod tak, aby hrana byla pod klouby prstů (bříška prstů přes hranu). Ruka na zábradlí.", "Chodidlo srovnej do vodorovné polohy: pata ani nahoře, ani pod schodem.", "Vydrž 40–45 s, dýchej. Pak sestup a krátká pauza."],
++      tip: "Když je to snadné, ber víc váhy na bolavou nohu. Bolest nad 3–4 z 10 znamená zkrátit výdrž.",
++      gear: "Schod a zábradlí nebo zeď.",
++      avoid: ["Pata klesá pod schod: držíš vodorovně, ne protažení.", "Prsty křečovitě svírají hranu: váha je na kloubech prstů, prsty volné.", "Zamčená kolena a zadržený dech."]
++    },
++    rhbband: {
++      name: "Výpony na schodu s gumou do strany", alias: "Rehabka · nahoru a dolů", type: "reps", rest: "1 min",
++      why: "Cvik od lékaře. Stejná poloha jako výdrž, ale v pohybu. Guma tahá koleno a kotník do strany a nutí je držet osu, takže pracuje i vnější část lýtka a stabilizátory kotníku.",
++      steps: ["Gumu uvaž kolem zábradlí nebo ji podrž tak, aby tahala koleno do strany (ven nebo dovnitř, podle zadání z rehabky).", "Stoupni si na schod s hranou pod klouby prstů, ruka na zábradlí.", "Plynule nahoru na špičky a dolů do vodorovné polohy. 15–20 opakování, tempo klidné, ne švih."],
++      tip: "Kotník drž rovně proti tahu gumy, kolena ať neuhýbají. Posledních pár opakování má být cítit v lýtku.",
++      gear: "Schod, zábradlí, odporová guma.",
++      avoid: ["Guma vyhrává: koleno a kotník se nechají stáhnout do strany.", "Rychlé pérování: každé opakování pod kontrolou.", "Dolů hluboko pod schod: zatím jen do roviny."]
++    },
++    rhbtap: {
++      name: "Dynamika u futer", alias: "Rehabka · špičky", type: "reps", rest: "45 s",
++      why: "Cvik od lékaře. První rychlejší práce šlachy: z výponu rychle klesnout a špičkami plácnout o zem. Učí šlachu pružit a vracet energii, připravuje na chůzi do schodů a běh.",
++      steps: ["Opři se rukama o rám dveří (futra), nohy na šířku boků.", "Zvedni se na špičky.", "Rychle klesni dolů tak, že špičkama plácneš o zem, a hned zase nahoru. 15–20 opakování, 3–4 série."],
++      tip: "Začni opatrně, dopad má být slyšet jako plácnutí, ne dunění. Když šlacha druhé ráno reaguje, příště uber sérii.",
++      gear: "Rám dveří nebo zeď na opření, rovná podlaha.",
++      avoid: ["Tvrdý dopad na patu: dopadají špičky a přední část chodidla.", "Vysoké skoky: nohy zem neopouštějí, jen výpon a plácnutí.", "Cvičení při ostré bolesti."]
++    },
+     kb5: {
+       name: "KB5: kettlebelly a protažení", alias: "Žolík", type: "time",
+       why: "Silový trénink s kettlebelly a protažení v KB5. Drží sílu celého těla a kondici, šlachu ale cíleně nebuduje, proto výpony z plánu zůstávají hlavní. Nahradí nejvýš 3 tréninky týdně.",
+@@ -285,6 +335,7 @@ window.MILESTONES = [
+   { id: "ten", name: "Desítka", desc: "10 tréninků", test: s => s.total >= 10 },
+   { id: "heavy", name: "Pod zátěží", desc: "Výpon na jedné noze se zátěží 10 kg", test: s => s.maxKg >= 10 },
+   { id: "streak3", name: "Tři v řadě", desc: "3 týdny v řadě splněný cíl", test: s => s.bestStreak >= 3 },
++  { id: "rehab7", name: "Poctivá rehabka", desc: "7 dní v řadě všechny cviky od lékaře", test: s => s.rehabStreak >= 7 },
+   { id: "twenty", name: "Dvacítka", desc: "20 tréninků", test: s => s.total >= 20 },
+   { id: "bike100", name: "Sto kilometrů", desc: "100 km na kole do práce", test: s => s.bikeKm >= 100 },
+   { id: "plan", name: "Celý plán", desc: "10 splněných týdnů", test: s => s.weeksHit >= 10 }
+diff --git a/scripts/notify.mjs b/scripts/notify.mjs
+index 782305d..26580ef 100644
+--- a/scripts/notify.mjs
++++ b/scripts/notify.mjs
+@@ -4,7 +4,8 @@
+ //
+ // Projde pairs/<kód> v databázi a pošle:
+ //   - parťákovi: nový trénink, zprávu, reakci
+-//   - cvičícímu: zprávu, reakci, připomínku v tréninkové dny (Europe/Prague)
++//   - cvičícímu: zprávu, reakci, připomínku v tréninkové dny (Europe/Prague),
++//     denně připomínku rehabky (cviky od lékaře) a den předem návštěvu kliniky
+ // Co už bylo odesláno, si pamatuje v pairs/<kód>/push/state.
+ //
+ // Proměnné prostředí:
+@@ -96,7 +97,19 @@ export function planPair(code, pair, now) {
+       to("patient", "reminders", { title: `${APP}: čas na trénink`, body: `Tento týden ${count} z ${goal}. ${left === 1 ? "Ještě jeden a týden je tvůj." : `Ještě ${left} ${plural(left, "trénink", "tréninky", "tréninků")} do cíle.`}`, tag: `rem-${today}`, url: "./?tab=log" });
+     }
+   }
+-  return { out, state: { lastCheck: now, reminded } };
++  // Rehabka: každý den v hodinu připomínky, když ještě nejsou odškrtnuté všechny cviky od lékaře.
++  // Ve stejnou chvíli připomene i zítřejší návštěvu kliniky.
++  const R = PLAN.rehab || {}, rItems = Array.isArray(R.items) ? R.items.filter(i => i && i.ex) : [];
++  let rehabReminded = state.rehabReminded || null;
++  if (rItems.length && (!R.since || today >= R.since) && rehabReminded !== today && hour >= remHour) {
++    rehabReminded = today;
++    const done = (pair.rehab || {})[today] || {};
++    const left = rItems.filter(i => !done[i.ex]).length;
++    if (left) to("patient", "reminders", { title: `${APP}: rehabka`, body: left === rItems.length ? `Dnes ještě žádný cvik od lékaře. ${rItems.length} ${plural(rItems.length, "cvik", "cviky", "cviků")} a den je kompletní.` : `Ještě ${left} ${plural(left, "cvik", "cviky", "cviků")} od lékaře a dnešek je kompletní.`, tag: `rhb-${today}`, url: "./" });
++    const tomorrow = toISO(fromISO(today) + DAY);
++    (R.visits || []).filter(v => v && v.date === tomorrow).forEach(v => to("patient", "reminders", { title: `${APP}: zítra ${v.what || "rehabka"}`, body: clip(`${v.time ? `V ${v.time}` : "Zítra"}${R.clinic?.name ? `, ${R.clinic.name}` : ""}${R.clinic?.address ? `, ${R.clinic.address}` : ""}.`, 140), tag: `visit-${v.date}`, url: "./" }));
++  }
++  return { out, state: { lastCheck: now, reminded, rehabReminded } };
+ }
+ 
+ /* ---------- přístup k databázi ---------- */
+-- 
+2.43.0
+
