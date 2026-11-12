@@ -242,8 +242,20 @@
     return (window.PLAN.phases.find(ph => ph.id === phaseId) || {}).everyday || [];
   }
 
+  // Cviky od fyzioterapeuta platné pro daný den (od data „since“).
+  const physioAll = () => (window.PLAN.physio || []).filter(p => p.id);
+  const physioItems = day => physioAll().filter(p => !p.since || p.since <= day).map(p => ({ ...p, physio: true }));
+  // Dny od „since“ do včerejška, kdy cvik od fyzioterapeuta není odškrtnutý.
+  function physioMissing(p) {
+    const log = state.data.everyday || {}, out = [];
+    if (!p.since) return out;
+    for (let d = p.since, end = daysAgo(1); d <= end; d = (x => (x.setDate(x.getDate() + 1), toISO(x)))(fromISO(d))) if (!(log[d] || {})[p.id]) out.push(d);
+    return out;
+  }
+
   // Jméno zaškrtnuté položky: nejdřív z aktuální fáze, pak z ostatních (id se mezi fázemi opakují).
   function everydayName(id, phaseId) {
+    const ph = physioAll().find(i => i.id === id); if (ph) return ph.name;
     const ids = [phaseId, ...window.PLAN.phases.map(ph => ph.id)];
     for (const pid of ids) { const it = everydayItems(pid).find(i => i.id === id); if (it) return it.name; }
     return id;
@@ -253,9 +265,9 @@
   // Zápis: everyday/<datum>/<id položky> = true. Den jde přepnout i zpětně (state.everydayDate).
   function everydayDate() { const d = state.everydayDate; return d && d <= todayISO() ? d : todayISO(); }
   function renderEveryday(st) {
-    const items = everydayItems(st.phase.id);
-    if (!items.length) return "";
     const log = state.data.everyday || {}, today = todayISO(), day = everydayDate(), done = log[day] || {};
+    const items = [...physioItems(day), ...everydayItems(st.phase.id)];
+    if (!items.length) return "";
     // Odškrtnuté položky z jiné fáze ať jdou pořád odebrat.
     const extra = Object.keys(done).filter(id => done[id] && !items.some(i => i.id === id)).map(id => ({ id, name: everydayName(id, st.phase.id), text: "" }));
     const all = [...items, ...extra];
@@ -268,7 +280,8 @@
     return `<section class="section" id="everyday"><div class="section-head"><h2>Během dne</h2><span class="small muted">${esc(dayLabel)} ${doneDay} z ${all.length} · týden ${thisWeek}×</span></div>
       ${ro ? "" : `<div class="seg" style="margin-bottom:8px">${[["Dnes", 0], ["Včera", 1], ["Předevčírem", 2]].map(([l, n]) => `<button type="button" data-ev-day="${n}" class="${day === daysAgo(n) ? "on" : ""}">${l}</button>`).join("")}</div>
       <input type="date" id="ev-date" value="${esc(day)}" max="${today}" aria-label="Jiný den" style="margin-bottom:10px">`}
-      ${todo.length ? `<div class="list">${todo.map(i => `<label class="card-soft card small check everyday"><input type="checkbox" data-everyday="${esc(i.id)}"${ro ? " disabled" : ""}><span><strong>${esc(i.name)}.</strong>${i.text ? ` <span class="muted">${esc(i.text)}</span>` : ""}</span></label>`).join("")}</div>` : `<div class="card-soft card small everyday-all">Všechno hotovo 👏</div>`}
+      ${todo.length ? `<div class="list">${todo.map(i => `<label class="card-soft card small check everyday"><input type="checkbox" data-everyday="${esc(i.id)}"${ro ? " disabled" : ""}><span>${i.physio ? `<span class="chip physio">od fyzioterapeuta</span> ` : ""}<strong>${esc(i.name)}${i.dose ? ` · ${esc(i.dose)}` : ""}.</strong>${i.text ? ` <span class="muted">${esc(i.text)}</span>` : ""}</span></label>`).join("")}</div>` : `<div class="card-soft card small everyday-all">Všechno hotovo 👏</div>`}
+      ${ro ? "" : physioAll().map(p => { const m = physioMissing(p); return m.length ? `<p class="small" style="margin-top:8px">${esc(p.name)}: chybí ${m.length} ${plural(m.length, "den", "dny", "dní")} od ${esc(fmtLong(p.since))} <button type="button" class="linkbtn" data-physio-fill="${esc(p.id)}">Odškrtnout všechny</button></p>` : ""; }).join("")}
       ${doneItems.length ? `<p class="ex-lab" style="margin-top:12px">Hotovo</p><div class="everyday-done">${doneItems.map(i => `<label class="check everyday-mini"><input type="checkbox" data-everyday="${esc(i.id)}" checked${ro ? " disabled" : ""}><span>${esc(i.name)}</span></label>`).join("")}</div>` : ""}
       <p class="small muted" style="margin-top:6px">${ro ? `Odškrtává ${esc(her())}. Do tréninků se nepočítá.` : day === today ? "Odškrtni, co dnes zvládneš. Do tréninků se nepočítá." : `Doplňuješ ${esc(fmtLong(day))}. Do tréninků se nepočítá.`}</p></section>`;
   }
@@ -517,6 +530,7 @@
     view.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => { const id = b.dataset.toggle; const cur = state.openEx[id] !== undefined ? state.openEx[id] : state.showSteps; state.openEx[id] = !cur; render(); });
     const ts = $("#toggle-steps"); if (ts) ts.onclick = () => { state.showSteps = !state.showSteps; state.openEx = {}; LS.set("showSteps", state.showSteps); render(); };
     view.querySelectorAll("[data-everyday]").forEach(c => c.onchange = () => store.set(`${BASE}/everyday/${everydayDate()}/${c.dataset.everyday}`, c.checked ? true : null));
+    view.querySelectorAll("[data-physio-fill]").forEach(b => b.onclick = () => { const p = physioAll().find(i => i.id === b.dataset.physioFill); if (!p) return; const m = physioMissing(p); m.forEach(d => store.set(`${BASE}/everyday/${d}/${p.id}`, true)); toast(`Doplněno ${m.length} ${plural(m.length, "den", "dny", "dní")}`); });
     view.querySelectorAll("[data-ev-day]").forEach(b => b.onclick = () => { state.everydayDate = daysAgo(Number(b.dataset.evDay)); render(); });
     const evd = $("#ev-date"); if (evd) evd.onchange = () => { state.everydayDate = evd.value || todayISO(); render(); };
     view.querySelectorAll("[data-ev-edit]").forEach(b => b.onclick = () => { state.everydayDate = b.dataset.evEdit; go("home"); const el = $("#everyday"); if (el) el.scrollIntoView(); });

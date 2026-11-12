@@ -74,6 +74,8 @@ Plán je v `js/plan.js`: slovník cviků `exercises` (název, proč, postup, tip
 
 Po zapnutí Firebase jde plán nahrát do databáze (Nastavení → Nahrát plán, nebo `node scripts/upload-plan.mjs --pair KÓD`). Appka pak používá verzi z databáze, takže ho jde upravovat přímo v konzoli Firebase. Při změně v kódu zvyš `version` a nahraj znovu.
 
+Cviky od fyzioterapeuta (seznam `physio` v `js/plan.js`, bere se vždy z kódu) se ukazují každý den od data `since` nahoře v kartě „Během dne“. Zpětně chybějící dny jde odškrtnout jedním tlačítkem.
+
 Další zdroje (seznam `resources` v `js/plan.js`, v appce sekce „Další zdroje“ pod pravidly; bere se vždy z kódu):
 
 - [Periodizace tréninku, zánět achilovky, intervaly, horko místo ledu](https://karelholub.substack.com/p/periodizace-treninku-zanet-achilovky) (Karel Holub, newsletter Běžím dokud můžu)
