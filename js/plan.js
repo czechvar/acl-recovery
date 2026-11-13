@@ -9,6 +9,12 @@ window.PLAN = {
   resources: [
     { title: "Periodizace tréninku, zánět achilovky, intervaly, horko místo ledu", author: "Karel Holub, Běžím dokud můžu", note: "Část o periodizaci: jak trénink skládat do fází a proč plánovat i klidnější týdny.", url: "https://karelholub.substack.com/p/periodizace-treninku-zanet-achilovky" }
   ],
+  // Cviky od fyzioterapeuta: každý den od data „since“, bez ohledu na fázi.
+  // Zobrazují se v kartě Během dne a bere se vždy z kódu, ne z databáze.
+  physio: [
+    { id: "deerjump", name: "Jelení skok u futer", dose: "3 série × 6", since: "2026-11-06",
+      text: "Začni v podřepu, nohy zapřené. Dynamicky vystřel dopředu až do úplného protažení těla. Mezi sériemi krátká pauza." }
+  ],
   // Žolík: jízda na kole do práce nahradí nejvýš jeden silový trénink týdně.
   joker: { ex: "bike", perWeek: 1, minKm: 10, defaultKm: 20 },
   phases: [
